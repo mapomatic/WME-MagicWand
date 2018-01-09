@@ -2,15 +2,14 @@
 // @name                WME MagicWand
 // @namespace           http://en.advisor.travel/wme-magic-wand
 // @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it + Clone, Orthogonalize, Rotate and Resize for landmarks
-// @include         https://www.waze.com/*editor/*
-// @include         https://editor-beta.waze.com/*
-// @include         https://beta.waze.com/*editor/*
-// @exclude         https://www.waze.com/*user/editor/*
-// @version             2.1.2
+// @include             /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor.*$/
+// @version             2.1.3
 // @grant               none
 // @license             MIT
+// @copyright			2018 Vadim Istratov <wpoi@ya.ru>
 // ==/UserScript==
 
+/**
 // Special thanks goes to:
 // https://github.com/AndriiHeonia/hull
 // https://gist.github.com/tixxit/252222
@@ -19,10 +18,11 @@
 // http://stackoverflow.com/questions/849211/shortest-distance-between-a-point-and-a-line-segment?page=1&tab=active#tab-top
 // http://jsfromhell.com/math/is-point-in-poly
 // https://gist.github.com/robgaston/8855489
+ */
 
 function run_magicwand() {
 
-    var wmelmw_version = "2.1.2";
+    var wmelmw_version = "2.1.3";
 
     window.wme_magic_wand_debug = false;
     window.wme_magic_wand_profile = false;
@@ -228,7 +228,7 @@ function run_magicwand() {
                 <input type="button" id="_bMagicWandEdit_Corners" name="_bMagicWandEdit_Corners" class="btn btn-default" value="Orthogonalize" title="Ctrl+X (default)"/><br/> \
                 <input type="button" id="_bMagicWandEdit_Simplify" name="_bMagicWandEdit_Simplify" class="btn btn-default" value="Simplify" title="Ctrl+J (default)"/><br/> \
                 <div class="controls-container"> \
-                    <input type="checkbox" id="_cLandmarkMagicWandEdit_Rotate" name="_cLandmarkMagicWandEdit_Rotate" value="1" /><label for="_cLandmarkMagicWandEdit_Rotate">Enable Resize (no reshape)</label>\
+                    <input type="checkbox" id="_cLandmarkMagicWandEdit_Rotate" name="_cLandmarkMagicWandEdit_Rotate" value="1" /><label for="_cLandmarkMagicWandEdit_Rotate">Enable Rotate</label>\
                 </div>\
                 <div class="controls-container"> \
                     <input type="checkbox" id="_cLandmarkWandEdit_Resize" name="_cLandmarkWandEdit_Resize" value="1" /><label for="_cLandmarkWandEdit_Resize">Enable Resize (no reshape)</label>\
@@ -253,7 +253,26 @@ function run_magicwand() {
         });
 
 
+        updateLandmarkControls();
+    };
+
+    var awaiting_controls = 0;
+    var updateLandmarkControls = function () {
         var ModifyFeatureControl = W.geometryEditing.activeEditor;
+        if (ModifyFeatureControl === null) {
+            awaiting_controls++;
+
+            // Waiting too long
+            if (awaiting_controls > 10) {
+                console.log('Something is broken, cannot locale active editor for far too long');
+                return;
+            }
+
+            setTimeout(updateLandmarkControls, 500);
+            return;
+        }
+
+        awaiting_controls = 0;
 
         // Reset modification mode
         ModifyFeatureControl.mode = OpenLayers.Control.ModifyFeature.RESHAPE | OpenLayers.Control.ModifyFeature.DRAG;
@@ -630,39 +649,12 @@ function run_magicwand() {
             window.setInterval(highlightLandmarks, 250);
         }
 
-        return;
+        updateLandmarkControls();
 
-        var ModifyFeatureControl = Waze.map.getControlsByClass(/.*geometryediting.*/i);
-        ModifyFeatureControl = W.geometryEditing.activeEditor;
-        if (ModifyFeatureControl.length > 0) {
-            ModifyFeatureControl = ModifyFeatureControl[0];
-        } else {
-            // window.alert('Unable to find appropriate control element, script is broken');
-
-            // var places_layer = Waze.map.getLayersBy("name", 'Places');
-            //
-            // ModifyFeatureControl = new OpenLayers.Control.ModifyFeature(places_layer[0]);
-            // Waze.map.addControl(ModifyFeatureControl);
-
-            return;
-        }
-
-        // Reset modification mode
-        ModifyFeatureControl.mode = OpenLayers.Control.ModifyFeature.RESHAPE | OpenLayers.Control.ModifyFeature.DRAG;
-
-        if ($('#_cMagicWandEdit_Rotate').prop('checked')) {
-            ModifyFeatureControl.mode |= OpenLayers.Control.ModifyFeature.ROTATE;
-        }
-
-        if ($('#_cMagicWandEdit_Resize').prop('checked')) {
-            ModifyFeatureControl.mode |= OpenLayers.Control.ModifyFeature.RESIZE;
-            ModifyFeatureControl.mode &= ~OpenLayers.Control.ModifyFeature.RESHAPE; // Do not allow changing the form, keep aspect ratio
-        }
-
-        var selectorManager = Waze.selectionManager;
-        if (selectorManager.selectedItems.length > 0 && selectorManager.selectedItems[0].model.type == 'venue') {
-            selectorManager.selectControl.select(selectorManager.selectedItems[0]);
-        }
+        // var selectorManager = Waze.selectionManager;
+        // if (selectorManager.selectedItems.length > 0 && selectorManager.selectedItems[0].model.type === 'venue') {
+        //     selectorManager.selectControl.select(selectorManager.selectedItems[0]);
+        // }
     };
 
 
@@ -1011,7 +1003,7 @@ function run_magicwand() {
             var x, y, c_pixel, r;
             var viewX, viewY;
 
-            updateStatus('Processing tiles iage');
+            updateStatus('Processing tiles image');
 
             var id = draw_canvas_context.createImageData(1, 1);
             var d = id.data;
