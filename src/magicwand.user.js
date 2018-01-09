@@ -148,6 +148,20 @@ function run_magicwand() {
         // Event listeners
         Waze.selectionManager.events.register("selectionchanged", null, insertLandmarkSelectedButtons);
         window.addEventListener("beforeunload", saveWMEMagicWandOptions, false);
+        
+        let extprovobserver = new MutationObserver(function(mutations) {
+           mutations.forEach(function(mutation) {
+               for (var i = 0; i < mutation.addedNodes.length; i++) {
+                   var addedNode = mutation.addedNodes[i];
+                   if (addedNode.nodeType === Node.ELEMENT_NODE && $(addedNode).hasClass('address-edit-view')) {
+                       if(Waze.selectionManager.hasSelectedItems() && Waze.selectionManager.selectedItems[0].model.type == 'venue')
+                           insertLandmarkSelectedButtons();
+                   }
+               }
+            });
+        });
+
+        extprovobserver.observe(document.getElementById('edit-panel'), { childList: true, subtree: true });
 
         // Hotkeys
         registerKeyShortcut("WMEMagicWand_CloneLandmark", "Clone Landmark", cloneLandmark, {"C+c": "WMEMagicWand_CloneLandmark"});
