@@ -58,7 +58,7 @@ function run_magicwand() {
 
     function initialiseMagicWand() {
         try {
-            if (!((typeof window.Waze.map != undefined) && (undefined != typeof window.Waze.map.events.register) && (undefined != typeof window.Waze.selectionManager.events.register ) && (undefined != typeof window.Waze.loginManager.events.register) )) {
+            if (!((typeof W.map != undefined) && (undefined != typeof W.map.events.register) && (undefined != typeof W.selectionManager.events.register ) && (undefined != typeof W.loginManager.events.register) )) {
                 setTimeout(initialiseMagicWand, 1000);
                 return;
             }
@@ -150,7 +150,7 @@ function run_magicwand() {
         $('#_cMagicWandConcavHull').change(updateAdvancedEditing);
 
         // Event listeners
-        Waze.selectionManager.events.register("selectionchanged", null, insertLandmarkSelectedButtons);
+        W.selectionManager.events.register("selectionchanged", null, insertLandmarkSelectedButtons);
         window.addEventListener("beforeunload", saveWMEMagicWandOptions, false);
         
         let extprovobserver = new MutationObserver(function(mutations) {
@@ -158,7 +158,7 @@ function run_magicwand() {
                for (var i = 0; i < mutation.addedNodes.length; i++) {
                    var addedNode = mutation.addedNodes[i];
                    if (addedNode.nodeType === Node.ELEMENT_NODE && $(addedNode).hasClass('address-edit-view')) {
-                       if(Waze.selectionManager.hasSelectedItems() && Waze.selectionManager.selectedItems[0].model.type == 'venue')
+                       if(W.selectionManager.hasSelectedItems() && W.selectionManager.selectedItems[0].model.type == 'venue')
                            insertLandmarkSelectedButtons();
                    }
                }
@@ -205,9 +205,9 @@ function run_magicwand() {
     }
 
     function registerKeyShortcut(action_name, annotation, callback, key_map) {
-        Waze.accelerators.addAction(action_name, {group: 'default'});
-        Waze.accelerators.events.register(action_name, null, callback);
-        Waze.accelerators._registerShortcuts(key_map);
+        W.accelerators.addAction(action_name, {group: 'default'});
+        W.accelerators.events.register(action_name, null, callback);
+        W.accelerators._registerShortcuts(key_map);
     }
 
     function saveWMEMagicWandOptions() {
@@ -235,7 +235,7 @@ function run_magicwand() {
 
     var insertLandmarkSelectedButtons = function(e)
     {
-        if(Waze.selectionManager.selectedItems.length == 0 || Waze.selectionManager.selectedItems[0].model.type != 'venue') return;
+        if(W.selectionManager.selectedItems.length == 0 || W.selectionManager.selectedItems[0].model.type != 'venue') return;
         if(getElId('_bMagicWandEdit_CloneLandmark') != null) return;
 
         $('#landmark-edit-general').prepend(
@@ -293,22 +293,22 @@ function run_magicwand() {
         awaiting_controls = 0;
 
         // Reset modification mode
-        ModifyFeatureControl.mode = OpenLayers.Control.ModifyFeature.RESHAPE | OpenLayers.Control.ModifyFeature.DRAG;
+        ModifyFeatureControl.mode = OL.Control.ModifyFeature.RESHAPE | OL.Control.ModifyFeature.DRAG;
 
         if ($('#_cMagicWandEdit_Rotate').prop('checked')) {
-            ModifyFeatureControl.mode |= OpenLayers.Control.ModifyFeature.ROTATE;
+            ModifyFeatureControl.mode |= OL.Control.ModifyFeature.ROTATE;
         }
 
         if ($('#_cMagicWandEdit_Resize').prop('checked')) {
-            ModifyFeatureControl.mode |= OpenLayers.Control.ModifyFeature.RESIZE;
-            ModifyFeatureControl.mode &= ~OpenLayers.Control.ModifyFeature.RESHAPE; // Do not allow changing the form, keep aspect ratio
+            ModifyFeatureControl.mode |= OL.Control.ModifyFeature.RESIZE;
+            ModifyFeatureControl.mode &= ~OL.Control.ModifyFeature.RESHAPE; // Do not allow changing the form, keep aspect ratio
         }
 
         ModifyFeatureControl.resetVertices();
     };
 
     var simplifySelectedLandmark = function () {
-        var selectorManager = Waze.selectionManager;
+        var selectorManager = W.selectionManager;
         if (!selectorManager.hasSelectedItems() || selectorManager.selectedItems[0].model.type !== "venue" || !selectorManager.selectedItems[0].model.isGeometryEditable()) {
             return;
         }
@@ -316,9 +316,9 @@ function run_magicwand() {
         var SelectedLandmark = selectorManager.selectedItems[0];
         var oldGeometry = SelectedLandmark.geometry.clone();
 
-        var LineString = new OpenLayers.Geometry.LineString(oldGeometry.components[0].components);
+        var LineString = new OL.Geometry.LineString(oldGeometry.components[0].components);
         LineString = LineString.simplify(simplifyFactor);
-        var newGeometry = new OpenLayers.Geometry.Polygon(new OpenLayers.Geometry.LinearRing(LineString.components));
+        var newGeometry = new OL.Geometry.Polygon(new OL.Geometry.LinearRing(LineString.components));
 
         if (newGeometry.components[0].components.length < oldGeometry.components[0].components.length) {
             var UpdateFeatureGeometry = require("Waze/Action/UpdateFeatureGeometry");
@@ -327,7 +327,7 @@ function run_magicwand() {
     };
 
     var cloneLandmark = function () {
-        var selectorManager = Waze.selectionManager;
+        var selectorManager = W.selectionManager;
         if (!selectorManager.hasSelectedItems() || selectorManager.selectedItems[0].model.type != 'venue') {
             return;
         }
@@ -344,16 +344,16 @@ function run_magicwand() {
         NewLandmark.geometry = ClonedLandmark.geometry;
         NewLandmark.attributes.categories = SelectedLandmark.model.attributes.categories;
 
-        Waze.model.actionManager.add(new wazeActionAddLandmark(NewLandmark));
+        W.model.actionManager.add(new wazeActionAddLandmark(NewLandmark));
         selectorManager.select([NewLandmark]);
     };
 
     var Orthogonalize = function() {
-        if (Waze.selectionManager.selectedItems.length <= 0 || Waze.selectionManager.selectedItems[0].model.type != 'venue') {
+        if (W.selectionManager.selectedItems.length <= 0 || W.selectionManager.selectedItems[0].model.type != 'venue') {
             return;
         }
 
-        var SelectedLandmark = Waze.selectionManager.selectedItems[0];
+        var SelectedLandmark = W.selectionManager.selectedItems[0];
 
         var geom = SelectedLandmark.geometry.clone();
         var components = geom.components[0].components;
@@ -384,8 +384,8 @@ function run_magicwand() {
 
         SelectedLandmark.geometry.components[0].clearBounds();
 
-        var action = new wazeActionUpdateFeatureGeometry(SelectedLandmark.model, Waze.model.venues, undoGeometry, SelectedLandmark.geometry);
-        Waze.model.actionManager.add(action);
+        var action = new wazeActionUpdateFeatureGeometry(SelectedLandmark.model, W.model.venues, undoGeometry, SelectedLandmark.geometry);
+        W.model.actionManager.add(action);
 
         delete undoGeometry;
     };
@@ -397,8 +397,8 @@ function run_magicwand() {
 
         var geom, components, functor, newWay;
 
-        for (var mark in Waze.model.venues.objects) {
-            var SelectedLandmark = Waze.model.venues.get(mark);
+        for (var mark in W.model.venues.objects) {
+            var SelectedLandmark = W.model.venues.get(mark);
             if (SelectedLandmark.isPoint()) {
                 continue;
             }
@@ -463,7 +463,7 @@ function run_magicwand() {
             var nodes = this.way,
                 points = nodes.slice(0, nodes.length - 1).map(function (n) {
                     var t = n.clone();
-                    var p = t.transform(new OpenLayers.Projection("EPSG:900913"), new OpenLayers.Projection("EPSG:4326"));
+                    var p = t.transform(new OL.Projection("EPSG:900913"), new OL.Projection("EPSG:4326"));
                     p.y = lat2latp(p.y);
                     return p;
                 }),
@@ -488,7 +488,7 @@ function run_magicwand() {
 
                 var n = points[corner.i];
                 n.y = latp2lat(n.y);
-                var pp = n.transform(new OpenLayers.Projection("EPSG:4326"), new OpenLayers.Projection("EPSG:900913"));
+                var pp = n.transform(new OL.Projection("EPSG:4326"), new OL.Projection("EPSG:900913"));
 
                 var id = nodes[corner.i].id;
                 for (i = 0; i < nodes.length; i++) {
@@ -505,7 +505,7 @@ function run_magicwand() {
                 var best,
                     originalPoints = nodes.slice(0, nodes.length - 1).map(function (n) {
                         var t = n.clone();
-                        var p = t.transform(new OpenLayers.Projection("EPSG:900913"), new OpenLayers.Projection("EPSG:4326"));
+                        var p = t.transform(new OL.Projection("EPSG:900913"), new OL.Projection("EPSG:4326"));
                         p.y = lat2latp(p.y);
                         return p;
                     });
@@ -535,7 +535,7 @@ function run_magicwand() {
                     if (originalPoints[i].x !== points[i].x || originalPoints[i].y !== points[i].y) {
                         var n = points[i];
                         n.y = latp2lat(n.y);
-                        var pp = n.transform(new OpenLayers.Projection("EPSG:4326"), new OpenLayers.Projection("EPSG:900913"));
+                        var pp = n.transform(new OL.Projection("EPSG:4326"), new OL.Projection("EPSG:900913"));
 
                         var id = nodes[i].id;
                         for (j = 0; j < nodes.length; j++) {
@@ -653,7 +653,7 @@ function run_magicwand() {
 
         this.isDisabled = function (nodes) {
             var points = nodes.slice(0, nodes.length - 1).map(function (n) {
-                var p = n.toLonLat().transform(new OpenLayers.Projection("EPSG:900913"), new OpenLayers.Projection("EPSG:4326"));
+                var p = n.toLonLat().transform(new OL.Projection("EPSG:900913"), new OL.Projection("EPSG:4326"));
                 return {x: p.lat, y: p.lon};
             });
 
@@ -669,7 +669,7 @@ function run_magicwand() {
 
         updateLandmarkControls();
 
-        // var selectorManager = Waze.selectionManager;
+        // var selectorManager = W.selectionManager;
         // if (selectorManager.selectedItems.length > 0 && selectorManager.selectedItems[0].model.type === 'venue') {
         //     selectorManager.selectControl.select(selectorManager.selectedItems[0]);
         // }
@@ -1185,11 +1185,11 @@ function run_magicwand() {
 
             for (var k = 0; k < points.length; k++) {
                 o = points[k];
-                point_lonlat = W.map.getLonLatFromPixel(new OpenLayers.Pixel(o.x, o.y));
-                polyPoints.push(new OpenLayers.Geometry.Point(point_lonlat.lon, point_lonlat.lat));
+                point_lonlat = W.map.getLonLatFromPixel(new OL.Pixel(o.x, o.y));
+                polyPoints.push(new OL.Geometry.Point(point_lonlat.lon, point_lonlat.lat));
             }
 
-            var LineString = new OpenLayers.Geometry.LineString(polyPoints);
+            var LineString = new OL.Geometry.LineString(polyPoints);
             if (simplify > 0) {
                 LineString = LineString.simplify(simplify);
             }
@@ -1197,7 +1197,7 @@ function run_magicwand() {
             var wazefeatureVectorLandmark = require("Waze/Feature/Vector/Landmark");
             var wazeActionAddLandmark = require("Waze/Action/AddLandmark");
 
-            var polygon = new OpenLayers.Geometry.Polygon(new OpenLayers.Geometry.LinearRing(LineString.components));
+            var polygon = new OL.Geometry.Polygon(new OL.Geometry.LinearRing(LineString.components));
             var landmark = new wazefeatureVectorLandmark();
             landmark.geometry = polygon;
             landmark.attributes.categories = [landmark_type];
