@@ -103,7 +103,8 @@ function run_magicwand() {
             + '<label>Angle threshold<br/><input type="text" id="_cMagicWandAngleThreshold" name="_cMagicWandAngleThreshold" value="12" size="3" maxlength="2" /></label><br/>'
             + '<label><input type="checkbox" id="_cMagicWandEdit_Rotate" name="_cMagicWandEdit_Rotate" value="1" /> Enable Rotate landmarks</label><br/>'
             + '<label><input type="checkbox" id="_cMagicWandEdit_Resize" name="_cMagicWandEdit_Resize" value="1" /> Enable Resize (no reshape)</label><br/>'
-            + '<label><input type="checkbox" id="_cMagicWandHighlight" name="_cMagicWandHighlight" value="1" /> Enable Highlight</label><br/><br/>';
+            + '<label><input type="checkbox" id="_cMagicWandHighlight" name="_cMagicWandHighlight" value="1" /> Enable Highlight</label><br/>'
+            + '<label><input type="checkbox" id="_cMagicWandStraightHelper" name="_cMagicWandStraightHelper" value="1" /> Enable straight angle helper (hold SHIFT)</label><br/><br/><br/>';
         addon.appendChild(section);
 
         var section = document.createElement('p');
@@ -156,6 +157,7 @@ function run_magicwand() {
         $('#_cMagicWandEdit_Resize').change(updateAdvancedEditing);
         $('#_cMagicWandHighlight').change(updateAdvancedEditing);
         $('#_cMagicWandConcavHull').change(updateAdvancedEditing);
+        $('#_cMagicWandStraightHelper').change(updateAdvancedEditing);
 
         // Event listeners
         W.selectionManager.events.register("selectionchanged", null, onLandmarkSelect);
@@ -210,6 +212,7 @@ function run_magicwand() {
             getElId('_cMagicWandAngleThreshold').value = typeof options[6] !== 'undefined' ? options[6] : 12;
             getElId('_cMagicWandHighlight').checked = typeof options[7] !== 'undefined' && options[7];
             getElId('_cMagicWandConcavHull').value = typeof options[8] !== 'undefined' ? options[8] : 40;
+            getElId('_cMagicWandStraightHelper').checked = typeof options[9] !== 'undefined' ? options[9] : true;
         }
 
         updateAdvancedEditing();
@@ -239,6 +242,7 @@ function run_magicwand() {
             options[6] = getElId('_cMagicWandAngleThreshold').value;
             options[7] = getElId('_cMagicWandHighlight').checked;
             options[8] = getElId('_cMagicWandConcavHull').value;
+            options[8] = getElId('_cMagicWandStraightHelper').checked;
 
             localStorage.WMEMagicWandScript = JSON.stringify(options);
         }
@@ -1835,14 +1839,14 @@ function run_magicwand() {
     };
 
     var onKeyDown = function () {
-        if (window.event.keyCode === 16 && window.wme_magicwand_helpers.isDragging) {
+        if (getElId('_cMagicWandStraightHelper').checked && window.event.keyCode === 16 && window.wme_magicwand_helpers.isDragging) {
             startOrthogonalHelper();
         }
     };
 
     var onKeyUp = function () {
         // Shift key
-        if (window.event.keyCode === 16) {
+        if (getElId('_cMagicWandStraightHelper').checked && window.event.keyCode === 16) {
             stopOrthogonalHelper();
         }
     };
