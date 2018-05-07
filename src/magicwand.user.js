@@ -3,7 +3,7 @@
 // @namespace           http://en.advisor.travel/wme-magic-wand
 // @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it + Clone, Orthogonalize, Rotate and Resize for landmarks
 // @include             /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor.*$/
-// @version             2.1.4
+// @version             2.2
 // @grant               none
 // @license             MIT
 // @copyright			2018 Vadim Istratov <wpoi@ya.ru>
@@ -18,18 +18,26 @@
 // http://stackoverflow.com/questions/849211/shortest-distance-between-a-point-and-a-line-segment?page=1&tab=active#tab-top
 // http://jsfromhell.com/math/is-point-in-poly
 // https://gist.github.com/robgaston/8855489
+// https://github.com/predein
  */
 
 /**
- * Contributers: justins83
+ * Contributors: justins83
  */
 
 function run_magicwand() {
-
-    var wmelmw_version = "2.1.4";
+    var wmelmw_version = "2.2";
 
     window.wme_magic_wand_debug = false;
     window.wme_magic_wand_profile = false;
+
+    window.wme_magicwand_helpers = {
+        isDragging: false,
+        draggedNode: null,
+        modifiedFeatureControl: null,
+        layer: null,
+        snap: null
+    };
 
     /* bootstrap, will call initialiseHighlights() */
     function bootstraMagicWand() {
@@ -95,7 +103,8 @@ function run_magicwand() {
             + '<label>Angle threshold<br/><input type="text" id="_cMagicWandAngleThreshold" name="_cMagicWandAngleThreshold" value="12" size="3" maxlength="2" /></label><br/>'
             + '<label><input type="checkbox" id="_cMagicWandEdit_Rotate" name="_cMagicWandEdit_Rotate" value="1" /> Enable Rotate landmarks</label><br/>'
             + '<label><input type="checkbox" id="_cMagicWandEdit_Resize" name="_cMagicWandEdit_Resize" value="1" /> Enable Resize (no reshape)</label><br/>'
-            + '<label><input type="checkbox" id="_cMagicWandHighlight" name="_cMagicWandHighlight" value="1" /> Enable Highlight</label><br/><br/>';
+            + '<label><input type="checkbox" id="_cMagicWandHighlight" name="_cMagicWandHighlight" value="1" /> Enable Highlight</label><br/>'
+            + '<label><input type="checkbox" id="_cMagicWandStraightHelper" name="_cMagicWandStraightHelper" value="1" /> Enable straight angle helper (hold SHIFT)</label><br/><br/><br/>';
         addon.appendChild(section);
 
         var section = document.createElement('p');
@@ -148,18 +157,22 @@ function run_magicwand() {
         $('#_cMagicWandEdit_Resize').change(updateAdvancedEditing);
         $('#_cMagicWandHighlight').change(updateAdvancedEditing);
         $('#_cMagicWandConcavHull').change(updateAdvancedEditing);
+        $('#_cMagicWandStraightHelper').change(updateAdvancedEditing);
 
         // Event listeners
-        W.selectionManager.events.register("selectionchanged", null, insertLandmarkSelectedButtons);
+        W.selectionManager.events.register("selectionchanged", null, onLandmarkSelect);
         window.addEventListener("beforeunload", saveWMEMagicWandOptions, false);
-        
+        window.addEventListener("keydown", onKeyDown, false);
+        window.addEventListener("keyup", onKeyUp, false);
+
         let extprovobserver = new MutationObserver(function(mutations) {
            mutations.forEach(function(mutation) {
                for (var i = 0; i < mutation.addedNodes.length; i++) {
                    var addedNode = mutation.addedNodes[i];
                    if (addedNode.nodeType === Node.ELEMENT_NODE && $(addedNode).hasClass('address-edit-view')) {
-                       if(W.selectionManager.hasSelectedItems() && W.selectionManager.selectedItems[0].model.type == 'venue')
-                           insertLandmarkSelectedButtons();
+                       if (W.selectionManager.hasSelectedItems() && W.selectionManager.selectedItems[0].model.type === 'venue') {
+                           onLandmarkSelect();
+                       }
                    }
                }
             });
@@ -182,23 +195,24 @@ function run_magicwand() {
             console.log("WME MagicWand: loading options");
             var options = JSON.parse(localStorage.WMEMagicWandScript);
 
-            getElId('_cMagicWandEdit_Rotate').checked = typeof options[0] != 'undefined' ? options[0] : true;
-            getElId('_cMagicWandEdit_Resize').checked = typeof options[1] != 'undefined' && options[1];
+            getElId('_cMagicWandEdit_Rotate').checked = typeof options[0] !== 'undefined' ? options[0] : true;
+            getElId('_cMagicWandEdit_Resize').checked = typeof options[1] !== 'undefined' && options[1];
 
             for(var i = 0; i < getElId('_sMagicWandLandmark').options.length; i++) {
-                if (getElId('_sMagicWandLandmark').options[i].value == options[2]) {
+                if (getElId('_sMagicWandLandmark').options[i].value === options[2]) {
                     getElId('_sMagicWandLandmark').options[i].selected = true;
                     landmarkTypeSelected = true;
                     break;
                 }
             }
 
-            getElId('_cMagicWandSimilarity').value = typeof options[3] != 'undefined' ? options[3] : 9;
-            getElId('_cMagicWandSimplification').value = typeof options[4] != 'undefined' ? options[4] : 4;
-            getElId('_cMagicWandSampling').value = typeof options[5] != 'undefined' ? options[5] : 3;
-            getElId('_cMagicWandAngleThreshold').value = typeof options[6] != 'undefined' ? options[6] : 12;
-            getElId('_cMagicWandHighlight').checked = typeof options[7] != 'undefined' && options[7];
-            getElId('_cMagicWandConcavHull').value = typeof options[8] != 'undefined' ? options[8] : 40;
+            getElId('_cMagicWandSimilarity').value = typeof options[3] !== 'undefined' ? options[3] : 9;
+            getElId('_cMagicWandSimplification').value = typeof options[4] !== 'undefined' ? options[4] : 4;
+            getElId('_cMagicWandSampling').value = typeof options[5] !== 'undefined' ? options[5] : 3;
+            getElId('_cMagicWandAngleThreshold').value = typeof options[6] !== 'undefined' ? options[6] : 12;
+            getElId('_cMagicWandHighlight').checked = typeof options[7] !== 'undefined' && options[7];
+            getElId('_cMagicWandConcavHull').value = typeof options[8] !== 'undefined' ? options[8] : 40;
+            getElId('_cMagicWandStraightHelper').checked = typeof options[9] !== 'undefined' ? options[9] : true;
         }
 
         updateAdvancedEditing();
@@ -228,14 +242,58 @@ function run_magicwand() {
             options[6] = getElId('_cMagicWandAngleThreshold').value;
             options[7] = getElId('_cMagicWandHighlight').checked;
             options[8] = getElId('_cMagicWandConcavHull').value;
+            options[8] = getElId('_cMagicWandStraightHelper').checked;
 
             localStorage.WMEMagicWandScript = JSON.stringify(options);
         }
     }
 
+    var onLandmarkSelect = function (e) {
+        var mf = W.map.getControlsByClass('OpenLayers.Control.ModifyFeature')[0];
+        if (typeof mf === 'undefined') {
+            setTimeout(onLandmarkSelect, 500);
+            return;
+        }
+
+        insertLandmarkSelectedButtons(e);
+
+        (function () {
+            var mf = W.map.getControlsByClass('OpenLayers.Control.ModifyFeature')[0];
+            if (typeof mf.wme_magicwand_helper !== 'undefined') {
+                return;
+            }
+
+            mf.wme_magicwand_helper = true;
+
+            var defaultOnStart = mf.dragControl.onStart;
+            var defaultOnComplete = mf.dragControl.onComplete;
+
+            // Reset helpers
+            window.wme_magicwand_helpers = {
+                isDragging: false,
+                draggedNode: null,
+                modifiedFeatureVertices: null,
+                modifiedFeatureVirtualVertices: null,
+                layer: null,
+                snap: null
+            };
+
+            mf.dragControl.onStart = function (node, t) {
+                window.wme_magicwand_helpers.modifiedFeatureVertices = mf.vertices.clone();
+                window.wme_magicwand_helpers.modifiedFeatureVirtualVertices = mf.virtualVertices.clone();
+                defaultOnStart(node, t);
+                onVertexDrag(node);
+            };
+            mf.dragControl.onComplete = function (node) {
+                defaultOnComplete(node);
+                onVertexDragComplete();
+            };
+        })();
+    };
+
     var insertLandmarkSelectedButtons = function(e)
     {
-        if(W.selectionManager.selectedItems.length == 0 || W.selectionManager.selectedItems[0].model.type != 'venue') return;
+        if(W.selectionManager.selectedItems.length === 0 || W.selectionManager.selectedItems[0].model.type !== 'venue') return;
         if(getElId('_bMagicWandEdit_CloneLandmark') != null) return;
 
         $('#landmark-edit-general').prepend(
@@ -328,7 +386,7 @@ function run_magicwand() {
 
     var cloneLandmark = function () {
         var selectorManager = W.selectionManager;
-        if (!selectorManager.hasSelectedItems() || selectorManager.selectedItems[0].model.type != 'venue') {
+        if (!selectorManager.hasSelectedItems() || selectorManager.selectedItems[0].model.type !== 'venue') {
             return;
         }
 
@@ -349,7 +407,7 @@ function run_magicwand() {
     };
 
     var Orthogonalize = function() {
-        if (W.selectionManager.selectedItems.length <= 0 || W.selectionManager.selectedItems[0].model.type != 'venue') {
+        if (W.selectionManager.selectedItems.length <= 0 || W.selectionManager.selectedItems[0].model.type !== 'venue') {
             return;
         }
 
@@ -741,7 +799,7 @@ function run_magicwand() {
     }
 
     function WMELandmarkMagicWand() {
-        var W = window.Waze;
+        var W = window.W;
 
         var layer;
 
@@ -1761,6 +1819,121 @@ function run_magicwand() {
         var x = pt1.x - pt2.x;
         var y = pt1.y - pt2.y;
         return Math.sqrt(x * x + y * y);
+    };
+
+    var onVertexDrag = function (dragged_node) {
+        window.wme_magicwand_helpers.isDragging = true;
+        window.wme_magicwand_helpers.draggedNode = dragged_node;
+
+        if (window.event.shiftKey && window.wme_magicwand_helpers.isDragging) {
+            startOrthogonalHelper(dragged_node);
+        }
+    };
+
+    var onVertexDragComplete = function () {
+        window.wme_magicwand_helpers.isDragging = false;
+        window.wme_magicwand_helpers.draggedNode = null;
+        window.wme_magicwand_helpers.modifiedFeatureVertices = null;
+        window.wme_magicwand_helpers.modifiedFeatureVirtualVertices = null;
+        stopOrthogonalHelper();
+    };
+
+    var onKeyDown = function () {
+        if (getElId('_cMagicWandStraightHelper').checked && window.event.keyCode === 16 && window.wme_magicwand_helpers.isDragging) {
+            startOrthogonalHelper();
+        }
+    };
+
+    var onKeyUp = function () {
+        // Shift key
+        if (getElId('_cMagicWandStraightHelper').checked && window.event.keyCode === 16) {
+            stopOrthogonalHelper();
+        }
+    };
+
+    var startOrthogonalHelper = function () {
+        var dragged_node = window.wme_magicwand_helpers.draggedNode;
+
+        var components = window.wme_magicwand_helpers.modifiedFeatureVertices;
+        var indexOf = null;
+
+        // If dragged node is a real node
+        for (var i = 0; i < components.length; i++) {
+            if (components[i] === dragged_node) {
+                indexOf = i;
+                break;
+            }
+        }
+
+        var prevPointIndex, nextPointIndex;
+
+        // debugger;
+
+        // Maybe we're dragging a new node?
+        if (indexOf === null) {
+            for (i = 0; i < window.wme_magicwand_helpers.modifiedFeatureVirtualVertices.length; i++) {
+                if (window.wme_magicwand_helpers.modifiedFeatureVirtualVertices[i] === dragged_node) {
+                    indexOf = i;
+                    break;
+                }
+            }
+
+            if (indexOf !== null) {
+                prevPointIndex = indexOf;
+                nextPointIndex = indexOf < components.length - 1 ? indexOf + 1 : 0;
+            }
+        } else {
+            prevPointIndex = indexOf > 0 ? indexOf - 1 : components.length - 1;
+            nextPointIndex = indexOf < components.length - 1 ? indexOf + 1 : 0;
+        }
+
+        if (indexOf === null) {
+            console.log('Now that is strange, dragged node not found in vertices');
+            return;
+        }
+
+        var centerPoint = new OL.Geometry.Point((components[nextPointIndex].geometry.x + components[prevPointIndex].geometry.x) / 2, (components[nextPointIndex].geometry.y + components[prevPointIndex].geometry.y) / 2);
+        var radius = Math.sqrt(Math.pow(components[nextPointIndex].geometry.x - components[prevPointIndex].geometry.x, 2) + Math.pow(components[nextPointIndex].geometry.y - components[prevPointIndex].geometry.y, 2)) / 2;
+
+        // Create helper layer and snapping control
+        var helperLayer = new OL.Layer.Vector('WMEMagicwand_Helper');
+        W.map.addLayer(helperLayer);
+
+        var snap = new OL.Control.Snapping({
+            layer: W.map.landmarkLayer,
+            targets: [{
+                layer: helperLayer,
+                tolerance: 25
+            }]
+        });
+        snap.activate();
+
+        helperLayer.addFeatures(new OL.Feature.Vector(OpenLayers.Geometry.Polygon.createRegularPolygon(centerPoint, radius, 500, 0)));
+
+        window.wme_magicwand_helpers.snap = snap;
+        window.wme_magicwand_helpers.layer = helperLayer;
+    };
+
+    var stopOrthogonalHelper = function () {
+        var helpers = window.wme_magicwand_helpers;
+        if (!helpers.layer || !helpers.snap) {
+            return;
+        }
+
+        var layers = W.map.getLayersByName('WMEMagicwand_Helper');
+        for (var i = 0; i < layers.length; i++) {
+            var l = layers[i];
+
+            l.removeAllFeatures();
+            W.map.removeLayer(l);
+            l.destroy();
+        }
+
+        helpers.snap.deactivate();
+        helpers.snap.destroy();
+
+        helpers.snap = null;
+        helpers.layer = null;
     };
 
     /* engage! =================================================================== */
