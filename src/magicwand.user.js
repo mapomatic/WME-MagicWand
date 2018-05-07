@@ -170,7 +170,7 @@ function run_magicwand() {
                for (var i = 0; i < mutation.addedNodes.length; i++) {
                    var addedNode = mutation.addedNodes[i];
                    if (addedNode.nodeType === Node.ELEMENT_NODE && $(addedNode).hasClass('address-edit-view')) {
-                       if (W.selectionManager.hasSelectedItems() && W.selectionManager.selectedItems[0].model.type === 'venue') {
+                       if (W.selectionManager.hasSelectedFeatures() && W.selectionManager.getSelectedFeatures()[0].model.type === 'venue') {
                            onLandmarkSelect();
                        }
                    }
@@ -293,7 +293,7 @@ function run_magicwand() {
 
     var insertLandmarkSelectedButtons = function(e)
     {
-        if(W.selectionManager.selectedItems.length === 0 || W.selectionManager.selectedItems[0].model.type !== 'venue') return;
+        if(W.selectionManager.getSelectedFeatures().length === 0 || W.selectionManager.getSelectedFeatures()[0].model.type !== 'venue') return;
         if(getElId('_bMagicWandEdit_CloneLandmark') != null) return;
 
         $('#landmark-edit-general').prepend(
@@ -367,11 +367,11 @@ function run_magicwand() {
 
     var simplifySelectedLandmark = function () {
         var selectorManager = W.selectionManager;
-        if (!selectorManager.hasSelectedItems() || selectorManager.selectedItems[0].model.type !== "venue" || !selectorManager.selectedItems[0].model.isGeometryEditable()) {
+        if (!selectorManager.hasSelectedFeatures() || selectorManager.getSelectedFeatures()[0].model.type !== "venue" || !selectorManager.getSelectedFeatures()[0].model.isGeometryEditable()) {
             return;
         }
         var simplifyFactor = $('#_cMagicWandSimplification').val();
-        var SelectedLandmark = selectorManager.selectedItems[0];
+        var SelectedLandmark = selectorManager.getSelectedFeatures()[0];
         var oldGeometry = SelectedLandmark.geometry.clone();
 
         var LineString = new OL.Geometry.LineString(oldGeometry.components[0].components);
@@ -386,11 +386,11 @@ function run_magicwand() {
 
     var cloneLandmark = function () {
         var selectorManager = W.selectionManager;
-        if (!selectorManager.hasSelectedItems() || selectorManager.selectedItems[0].model.type !== 'venue') {
+        if (!selectorManager.hasSelectedFeatures() || selectorManager.getSelectedFeatures()[0].model.type !== 'venue') {
             return;
         }
 
-        var SelectedLandmark = selectorManager.selectedItems[0];
+        var SelectedLandmark = selectorManager.getSelectedFeatures()[0];
         var ClonedLandmark = SelectedLandmark.clone();
         ClonedLandmark.geometry.move(50, 50); // move to some offset
         ClonedLandmark.geometry.clearBounds();
@@ -407,11 +407,11 @@ function run_magicwand() {
     };
 
     var Orthogonalize = function() {
-        if (W.selectionManager.selectedItems.length <= 0 || W.selectionManager.selectedItems[0].model.type !== 'venue') {
+        if (W.selectionManager.getSelectedFeatures().length <= 0 || W.selectionManager.getSelectedFeatures()[0].model.type !== 'venue') {
             return;
         }
 
-        var SelectedLandmark = W.selectionManager.selectedItems[0];
+        var SelectedLandmark = W.selectionManager.getSelectedFeatures()[0];
 
         var geom = SelectedLandmark.geometry.clone();
         var components = geom.components[0].components;
