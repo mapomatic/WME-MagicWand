@@ -578,7 +578,7 @@ function run_magicwand() {
                     }
                     var newScore = squareness(points);
                     if (newScore < score) {
-                        best = points.clone();
+                        best = [].concat(points);
                         score = newScore;
                     }
                     if (score < epsilon) {
