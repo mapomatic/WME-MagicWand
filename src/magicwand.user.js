@@ -26,7 +26,7 @@
  */
 
 function run_magicwand() {
-    var wmelmw_version = "2.2";
+    var wmelmw_version = "2.3";
 
     window.wme_magic_wand_debug = false;
     window.wme_magic_wand_profile = false;
