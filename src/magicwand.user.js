@@ -3,7 +3,7 @@
 // @namespace           http://en.advisor.travel/wme-magic-wand
 // @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it + Clone, Orthogonalize, Rotate and Resize for landmarks
 // @include             /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor.*$/
-// @version             2.2
+// @version             2.3
 // @grant               none
 // @license             MIT
 // @copyright			2018 Vadim Istratov <wpoi@ya.ru>
@@ -249,7 +249,7 @@ function run_magicwand() {
     }
 
     var onLandmarkSelect = function (e) {
-        var mf = W.map.getControlsByClass('OpenLayers.Control.ModifyFeature')[0];
+        var mf = W.map.getOLMap().getControlsByClass('OpenLayers.Control.ModifyFeature')[0];
         if (typeof mf === 'undefined') {
             setTimeout(onLandmarkSelect, 500);
             return;
@@ -258,7 +258,7 @@ function run_magicwand() {
         insertLandmarkSelectedButtons(e);
 
         (function () {
-            var mf = W.map.getControlsByClass('OpenLayers.Control.ModifyFeature')[0];
+            var mf = W.map.getOLMap().getControlsByClass('OpenLayers.Control.ModifyFeature')[0];
             if (typeof mf.wme_magicwand_helper !== 'undefined') {
                 return;
             }
@@ -296,7 +296,7 @@ function run_magicwand() {
         if(W.selectionManager.getSelectedFeatures().length === 0 || W.selectionManager.getSelectedFeatures()[0].model.type !== 'venue') return;
         if(getElId('_bMagicWandEdit_CloneLandmark') != null) return;
 
-        $('#landmark-edit-general').prepend(
+        $('wz-tab.venue-edit-tab-general').prepend(
             '<div class="form-group"> \
               <label class="control-label">Advanced options</label> \
               <div class="controls"> \
@@ -351,15 +351,15 @@ function run_magicwand() {
         awaiting_controls = 0;
 
         // Reset modification mode
-        ModifyFeatureControl.mode = OL.Control.ModifyFeature.RESHAPE | OL.Control.ModifyFeature.DRAG;
+        ModifyFeatureControl.mode = OpenLayers.Control.ModifyFeature.RESHAPE | OpenLayers.Control.ModifyFeature.DRAG;
 
         if ($('#_cMagicWandEdit_Rotate').prop('checked')) {
-            ModifyFeatureControl.mode |= OL.Control.ModifyFeature.ROTATE;
+            ModifyFeatureControl.mode |= OpenLayers.Control.ModifyFeature.ROTATE;
         }
 
         if ($('#_cMagicWandEdit_Resize').prop('checked')) {
-            ModifyFeatureControl.mode |= OL.Control.ModifyFeature.RESIZE;
-            ModifyFeatureControl.mode &= ~OL.Control.ModifyFeature.RESHAPE; // Do not allow changing the form, keep aspect ratio
+            ModifyFeatureControl.mode |= OpenLayers.Control.ModifyFeature.RESIZE;
+            ModifyFeatureControl.mode &= ~OpenLayers.Control.ModifyFeature.RESHAPE; // Do not allow changing the form, keep aspect ratio
         }
 
         ModifyFeatureControl.resetVertices();
@@ -374,9 +374,9 @@ function run_magicwand() {
         var SelectedLandmark = selectorManager.getSelectedFeatures()[0];
         var oldGeometry = SelectedLandmark.geometry.clone();
 
-        var LineString = new OL.Geometry.LineString(oldGeometry.components[0].components);
+        var LineString = new OpenLayers.Geometry.LineString(oldGeometry.components[0].components);
         LineString = LineString.simplify(simplifyFactor);
-        var newGeometry = new OL.Geometry.Polygon(new OL.Geometry.LinearRing(LineString.components));
+        var newGeometry = new OpenLayers.Geometry.Polygon(new OpenLayers.Geometry.LinearRing(LineString.components));
 
         if (newGeometry.components[0].components.length < oldGeometry.components[0].components.length) {
             var UpdateFeatureGeometry = require("Waze/Action/UpdateFeatureGeometry");
@@ -403,7 +403,7 @@ function run_magicwand() {
         NewLandmark.attributes.categories = SelectedLandmark.model.attributes.categories;
 
         W.model.actionManager.add(new wazeActionAddLandmark(NewLandmark));
-        selectorManager.select([NewLandmark]);
+        selectorManager.setSelectedModels([NewLandmark]);
     };
 
     var Orthogonalize = function() {
@@ -521,7 +521,7 @@ function run_magicwand() {
             var nodes = this.way,
                 points = nodes.slice(0, nodes.length - 1).map(function (n) {
                     var t = n.clone();
-                    var p = t.transform(new OL.Projection("EPSG:900913"), new OL.Projection("EPSG:4326"));
+                    var p = t.transform(new OpenLayers.Projection("EPSG:900913"), new OpenLayers.Projection("EPSG:4326"));
                     p.y = lat2latp(p.y);
                     return p;
                 }),
@@ -546,7 +546,7 @@ function run_magicwand() {
 
                 var n = points[corner.i];
                 n.y = latp2lat(n.y);
-                var pp = n.transform(new OL.Projection("EPSG:4326"), new OL.Projection("EPSG:900913"));
+                var pp = n.transform(new OpenLayers.Projection("EPSG:4326"), new OpenLayers.Projection("EPSG:900913"));
 
                 var id = nodes[corner.i].id;
                 for (i = 0; i < nodes.length; i++) {
@@ -563,7 +563,7 @@ function run_magicwand() {
                 var best,
                     originalPoints = nodes.slice(0, nodes.length - 1).map(function (n) {
                         var t = n.clone();
-                        var p = t.transform(new OL.Projection("EPSG:900913"), new OL.Projection("EPSG:4326"));
+                        var p = t.transform(new OpenLayers.Projection("EPSG:900913"), new OpenLayers.Projection("EPSG:4326"));
                         p.y = lat2latp(p.y);
                         return p;
                     });
@@ -593,7 +593,7 @@ function run_magicwand() {
                     if (originalPoints[i].x !== points[i].x || originalPoints[i].y !== points[i].y) {
                         var n = points[i];
                         n.y = latp2lat(n.y);
-                        var pp = n.transform(new OL.Projection("EPSG:4326"), new OL.Projection("EPSG:900913"));
+                        var pp = n.transform(new OpenLayers.Projection("EPSG:4326"), new OpenLayers.Projection("EPSG:900913"));
 
                         var id = nodes[i].id;
                         for (j = 0; j < nodes.length; j++) {
@@ -711,7 +711,7 @@ function run_magicwand() {
 
         this.isDisabled = function (nodes) {
             var points = nodes.slice(0, nodes.length - 1).map(function (n) {
-                var p = n.toLonLat().transform(new OL.Projection("EPSG:900913"), new OL.Projection("EPSG:4326"));
+                var p = n.toLonLat().transform(new OpenLayers.Projection("EPSG:900913"), new OpenLayers.Projection("EPSG:4326"));
                 return {x: p.lat, y: p.lon};
             });
 
@@ -840,7 +840,7 @@ function run_magicwand() {
             layer = null;
             var visible_layers = W.map.getLayersBy("visibility", true);
             for (var l = 0; l < visible_layers.length; l++) {
-                if (true === visible_layers[l].isBaseLayer) {
+                if (visible_layers[l].name === "satellite_imagery") { // (true === visible_layers[l].isBaseLayer) {
                     layer = visible_layers[l];
 
                     $('#_sMagicWandUsedLayer').html(layer.name)
@@ -1243,11 +1243,11 @@ function run_magicwand() {
 
             for (var k = 0; k < points.length; k++) {
                 o = points[k];
-                point_lonlat = W.map.getLonLatFromPixel(new OL.Pixel(o.x, o.y));
-                polyPoints.push(new OL.Geometry.Point(point_lonlat.lon, point_lonlat.lat));
+                point_lonlat = W.map.getLonLatFromPixel(new OpenLayers.Pixel(o.x, o.y));
+                polyPoints.push(new OpenLayers.Geometry.Point(point_lonlat.lon, point_lonlat.lat));
             }
 
-            var LineString = new OL.Geometry.LineString(polyPoints);
+            var LineString = new OpenLayers.Geometry.LineString(polyPoints);
             if (simplify > 0) {
                 LineString = LineString.simplify(simplify);
             }
@@ -1255,7 +1255,7 @@ function run_magicwand() {
             var wazefeatureVectorLandmark = require("Waze/Feature/Vector/Landmark");
             var wazeActionAddLandmark = require("Waze/Action/AddLandmark");
 
-            var polygon = new OL.Geometry.Polygon(new OL.Geometry.LinearRing(LineString.components));
+            var polygon = new OpenLayers.Geometry.Polygon(new OpenLayers.Geometry.LinearRing(LineString.components));
             var landmark = new wazefeatureVectorLandmark();
             landmark.geometry = polygon;
             landmark.attributes.categories = [landmark_type];
@@ -1892,14 +1892,14 @@ function run_magicwand() {
             return;
         }
 
-        var centerPoint = new OL.Geometry.Point((components[nextPointIndex].geometry.x + components[prevPointIndex].geometry.x) / 2, (components[nextPointIndex].geometry.y + components[prevPointIndex].geometry.y) / 2);
+        var centerPoint = new OpenLayers.Geometry.Point((components[nextPointIndex].geometry.x + components[prevPointIndex].geometry.x) / 2, (components[nextPointIndex].geometry.y + components[prevPointIndex].geometry.y) / 2);
         var radius = Math.sqrt(Math.pow(components[nextPointIndex].geometry.x - components[prevPointIndex].geometry.x, 2) + Math.pow(components[nextPointIndex].geometry.y - components[prevPointIndex].geometry.y, 2)) / 2;
 
         // Create helper layer and snapping control
-        var helperLayer = new OL.Layer.Vector('WMEMagicwand_Helper');
+        var helperLayer = new OpenLayers.Layer.Vector('WMEMagicwand_Helper');
         W.map.addLayer(helperLayer);
 
-        var snap = new OL.Control.Snapping({
+        var snap = new OpenLayers.Control.Snapping({
             layer: W.map.landmarkLayer,
             targets: [{
                 layer: helperLayer,
@@ -1908,7 +1908,7 @@ function run_magicwand() {
         });
         snap.activate();
 
-        helperLayer.addFeatures(new OL.Feature.Vector(OpenLayers.Geometry.Polygon.createRegularPolygon(centerPoint, radius, 500, 0)));
+        helperLayer.addFeatures(new OpenLayers.Feature.Vector(OpenLayers.Geometry.Polygon.createRegularPolygon(centerPoint, radius, 500, 0)));
 
         window.wme_magicwand_helpers.snap = snap;
         window.wme_magicwand_helpers.layer = helperLayer;
@@ -1947,133 +1947,133 @@ function run_magicwand() {
 // dummyd2's require() patch, modified to perform native require() detection for beta compatibility...
 //
 //{
-if(typeof require === "undefined")
-{
-   var WMEAPI = {};
-   WMEAPI.scripts = document.getElementsByTagName('script');
-   WMEAPI.url=null;
-   for (var i=0;i<WMEAPI.scripts.length;i++)
-   {
-      if (WMEAPI.scripts[i].src.indexOf('/assets-editor/js/app')!=-1)
-      {
-         WMEAPI.url=WMEAPI.scripts[i].src;
-         break;
-      }
-   }
-   if (WMEAPI.url==null)
-   {
-      throw new Error("WME Hack: can't detect WME main JS");
-   }
-   WMEAPI.require=function (e)
-   {
-      if (WMEAPI.require.define.modules.hasOwnProperty(e))
-      {
-         return WMEAPI.require.define.modules[e];
-      }
-      else
-      {
-         console.error('Require failed on ' + e, WMEAPI.require.define.modules);
-      }
-      return null;
-   };
-   WMEAPI.require.define=function (m)
-   {
-      if (WMEAPI.require.define.hasOwnProperty('modules') === false)
-      {
-         WMEAPI.require.define.modules={};
-      }
-      for (var p in m)
-      {
-         WMEAPI.require.define.modules[p]=m[p];
-      }
-   };
-   WMEAPI.tmp = window.webpackJsonp;
-   WMEAPI.t = function (n)
-   {
-      if (WMEAPI.s[n])
-      {
-         return WMEAPI.s[n].exports;
-      }
-      var r = WMEAPI.s[n] =
-      {
-         exports: {},
-         id: n,
-         loaded: !1
-      };
-      return WMEAPI.e[n].call(r.exports, r, r.exports, WMEAPI.t), r.loaded = !0, r.exports;
-   };
-   WMEAPI.e=[];
-   window.webpackJsonp = function(a, i)
-   {
-      var api={};
-      for (var o, d, u = 0, l = []; u < a.length; u++)
-      {
-         d = a[u], WMEAPI.r[d] && l.push.apply(l, WMEAPI.r[d]), WMEAPI.r[d] = 0;
-      }
-      var unknownCount=0;
-      var classname, funcStr;
-      for (o in i)
-      {
-         WMEAPI.e[o] = i[o];
-         funcStr = i[o].toString();
-         classname = funcStr.match(/CLASS_NAME:\"([^\"]*)\"/);
-         if (classname)
-         {
-            api[classname[1].replace(/\./g,'/').replace(/^W\//, 'Waze/')]={index: o, func: WMEAPI.e[o]};
-         }
-         else
-         {
-            api['Waze/Unknown/' + unknownCount]={index: o, func: WMEAPI.e[o]};
-            unknownCount++;
-         }
-      }
-      for (; l.length;)
-      {
-         l.shift().call(null, WMEAPI.t);
-      }
-      WMEAPI.s[0] = 0;
-      var module={};
-      var apiFuncName;
-      unknownCount=0;
-      for (o in i)
-      {
-         funcStr = i[o].toString();
-         classname = funcStr.match(/CLASS_NAME:\"([^\"]*)\"/);
-         if (classname)
-         {
-            module={};
-            apiFuncName = classname[1].replace(/\./g,'/').replace(/^W\//, 'Waze/');
-            module[apiFuncName]=WMEAPI.t(api[apiFuncName].index);
-            WMEAPI.require.define(module);
-         }
-         else
-         {
-            var matches = funcStr.match(/SEGMENT:"segment",/);
-            if (matches)
-            {
-               module={};
-               apiFuncName='Waze/Model/ObjectType';
-               module[apiFuncName]=WMEAPI.t(api['Waze/Unknown/' + unknownCount].index);
-               WMEAPI.require.define(module);
-            }
-            unknownCount++;
-         }
-      }
-      window.webpackJsonp=WMEAPI.tmp;
-      window.require=WMEAPI.require;
-      setTimeout(initWmeMagicWand(), 500);
-   };
-   WMEAPI.s = {};
-   WMEAPI.r = {0: 0};
-   WMEAPI.WMEHACK_Injected_script = document.createElement("script");
-   WMEAPI.WMEHACK_Injected_script.setAttribute("type", "application/javascript");
-   WMEAPI.WMEHACK_Injected_script.src = WMEAPI.url;
-   document.body.appendChild(WMEAPI.WMEHACK_Injected_script);
-}
-else
-{
+// if(typeof require === "undefined")
+// {
+//    var WMEAPI = {};
+//    WMEAPI.scripts = document.getElementsByTagName('script');
+//    WMEAPI.url=null;
+//    for (var i=0;i<WMEAPI.scripts.length;i++)
+//    {
+//       if (WMEAPI.scripts[i].src.indexOf('/assets-editor/js/app')!=-1)
+//       {
+//          WMEAPI.url=WMEAPI.scripts[i].src;
+//          break;
+//       }
+//    }
+//    if (WMEAPI.url==null)
+//    {
+//       throw new Error("WME Hack: can't detect WME main JS");
+//    }
+//    WMEAPI.require=function (e)
+//    {
+//       if (WMEAPI.require.define.modules.hasOwnProperty(e))
+//       {
+//          return WMEAPI.require.define.modules[e];
+//       }
+//       else
+//       {
+//          console.error('Require failed on ' + e, WMEAPI.require.define.modules);
+//       }
+//       return null;
+//    };
+//    WMEAPI.require.define=function (m)
+//    {
+//       if (WMEAPI.require.define.hasOwnProperty('modules') === false)
+//       {
+//          WMEAPI.require.define.modules={};
+//       }
+//       for (var p in m)
+//       {
+//          WMEAPI.require.define.modules[p]=m[p];
+//       }
+//    };
+//    WMEAPI.tmp = window.webpackJsonp;
+//    WMEAPI.t = function (n)
+//    {
+//       if (WMEAPI.s[n])
+//       {
+//          return WMEAPI.s[n].exports;
+//       }
+//       var r = WMEAPI.s[n] =
+//       {
+//          exports: {},
+//          id: n,
+//          loaded: !1
+//       };
+//       return WMEAPI.e[n].call(r.exports, r, r.exports, WMEAPI.t), r.loaded = !0, r.exports;
+//    };
+//    WMEAPI.e=[];
+//    window.webpackJsonp = function(a, i)
+//    {
+//       var api={};
+//       for (var o, d, u = 0, l = []; u < a.length; u++)
+//       {
+//          d = a[u], WMEAPI.r[d] && l.push.apply(l, WMEAPI.r[d]), WMEAPI.r[d] = 0;
+//       }
+//       var unknownCount=0;
+//       var classname, funcStr;
+//       for (o in i)
+//       {
+//          WMEAPI.e[o] = i[o];
+//          funcStr = i[o].toString();
+//          classname = funcStr.match(/CLASS_NAME:\"([^\"]*)\"/);
+//          if (classname)
+//          {
+//             api[classname[1].replace(/\./g,'/').replace(/^W\//, 'Waze/')]={index: o, func: WMEAPI.e[o]};
+//          }
+//          else
+//          {
+//             api['Waze/Unknown/' + unknownCount]={index: o, func: WMEAPI.e[o]};
+//             unknownCount++;
+//          }
+//       }
+//       for (; l.length;)
+//       {
+//          l.shift().call(null, WMEAPI.t);
+//       }
+//       WMEAPI.s[0] = 0;
+//       var module={};
+//       var apiFuncName;
+//       unknownCount=0;
+//       for (o in i)
+//       {
+//          funcStr = i[o].toString();
+//          classname = funcStr.match(/CLASS_NAME:\"([^\"]*)\"/);
+//          if (classname)
+//          {
+//             module={};
+//             apiFuncName = classname[1].replace(/\./g,'/').replace(/^W\//, 'Waze/');
+//             module[apiFuncName]=WMEAPI.t(api[apiFuncName].index);
+//             WMEAPI.require.define(module);
+//          }
+//          else
+//          {
+//             var matches = funcStr.match(/SEGMENT:"segment",/);
+//             if (matches)
+//             {
+//                module={};
+//                apiFuncName='Waze/Model/ObjectType';
+//                module[apiFuncName]=WMEAPI.t(api['Waze/Unknown/' + unknownCount].index);
+//                WMEAPI.require.define(module);
+//             }
+//             unknownCount++;
+//          }
+//       }
+//       window.webpackJsonp=WMEAPI.tmp;
+//       window.require=WMEAPI.require;
+//       setTimeout(initWmeMagicWand(), 500);
+//    };
+//    WMEAPI.s = {};
+//    WMEAPI.r = {0: 0};
+//    WMEAPI.WMEHACK_Injected_script = document.createElement("script");
+//    WMEAPI.WMEHACK_Injected_script.setAttribute("type", "application/javascript");
+//    WMEAPI.WMEHACK_Injected_script.src = WMEAPI.url;
+//    document.body.appendChild(WMEAPI.WMEHACK_Injected_script);
+// }
+// else
+// {
     initWmeMagicWand();
-}
+// }
 //}
 //
 // end of dummyd2's require() patch
