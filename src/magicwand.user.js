@@ -3,7 +3,7 @@
 // @namespace           http://en.advisor.travel/wme-magic-wand
 // @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it + Clone, Orthogonalize, Rotate and Resize for landmarks
 // @include             /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor.*$/
-// @version             2.3
+// @version             2.31
 // @grant               none
 // @license             MIT
 // @copyright			2018 Vadim Istratov <wpoi@ya.ru>
@@ -2072,7 +2072,7 @@ function run_magicwand() {
 // }
 // else
 // {
-    initWmeMagicWand();
+//     initWmeMagicWand();
 // }
 //}
 //
@@ -2080,8 +2080,8 @@ function run_magicwand() {
 //
 
 function initWmeMagicWand() {
-    var DLscript = document.createElement("script");
-    DLscript.textContent = run_magicwand.toString() + ' \n' + 'run_magicwand();';
-    DLscript.setAttribute("type", "application/javascript");
-    document.body.appendChild(DLscript);
+    window.run_magicwand = run_magicwand;
+    run_magicwand();
 }
+
+W?.userscripts?.state?.isReady ? initWmeMagicWand() : document.addEventListener("wme-ready", initWmeMagicWand, { once: true });
