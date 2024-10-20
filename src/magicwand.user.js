@@ -1,12 +1,14 @@
+/* eslint-disable */
 // ==UserScript==
 // @name                WME MagicWand
 // @namespace           http://en.advisor.travel/wme-magic-wand
-// @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it + Clone, Orthogonalize, Rotate and Resize for landmarks
+// @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it
 // @include             /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor.*$/
-// @version             2.31
+// @version             2.4
 // @grant               none
+// @require             https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js
 // @license             MIT
-// @copyright			2018 Vadim Istratov <wpoi@ya.ru>
+// @copyright           2018 Vadim Istratov <wpoi@ya.ru>
 // ==/UserScript==
 
 /**
@@ -22,11 +24,23 @@
  */
 
 /**
- * Contributors: justins83
+ * Contributors: justins83, MapOMatic (2023-?)
  */
 
-function run_magicwand() {
-    var wmelmw_version = "2.3";
+/* global W */
+/* global OpenLayers */
+/* global turf */
+
+/* eslint-enable */
+/* eslint-disable camelcase */
+/* eslint-disable prefer-destructuring */
+/* eslint-disable max-len */
+/* eslint-disable no-bitwise */
+/* eslint-disable no-continue */
+(function main() {
+    'use strict';
+
+    const wmelmw_version = GM_info.script.version;
 
     window.wme_magic_wand_debug = false;
     window.wme_magic_wand_profile = false;
@@ -39,22 +53,13 @@ function run_magicwand() {
         snap: null
     };
 
-    /* bootstrap, will call initialiseHighlights() */
-    function bootstraMagicWand() {
-        var bGreasemonkeyServiceDefined = false;
-
-        /* begin running the code! */
-        setTimeout(initialiseMagicWand, 500);
-    }
-
     /* helper function */
     function getElClass(classname, node) {
-        if (!node) node = document.getElementsByTagName("body")[0];
-        var a = [];
-        var re = new RegExp('\\b' + classname + '\\b');
-        var els = node.getElementsByTagName("*");
-        for (var i = 0, j = els.length; i < j; i++)
-            if (re.test(els[i].className)) a.push(els[i]);
+        if (!node) node = document.getElementsByTagName('body')[0];
+        const a = [];
+        const re = new RegExp(`\\b${classname}\\b`);
+        const els = node.getElementsByTagName('*');
+        for (let i = 0, j = els.length; i < j; i++) if (re.test(els[i].className)) a.push(els[i]);
         return a;
     }
 
@@ -65,26 +70,16 @@ function run_magicwand() {
     /* =========================================================================== */
 
     function initialiseMagicWand() {
-        try {
-            if (!((typeof W.map != undefined) && (undefined != typeof W.map.events.register) && (undefined != typeof W.selectionManager.events.register ) && (undefined != typeof W.loginManager.events.register) )) {
-                setTimeout(initialiseMagicWand, 1000);
-                return;
-            }
-        } catch (err) {
+        const userInfo = getElId('user-info');
+        const userTabs = getElId('user-tabs');
+
+        if (!getElClass('nav-tabs', userTabs)[0]) {
             setTimeout(initialiseMagicWand, 1000);
             return;
         }
 
-        var userInfo = getElId('user-info');
-        var userTabs = getElId('user-tabs');
-
-        if(!getElClass('nav-tabs', userTabs)[0]) {
-            setTimeout(initialiseMagicWand, 1000);
-            return;
-        }
-
-        var navTabs = getElClass('nav-tabs', userTabs)[0];
-        var tabContent = getElClass('tab-content', userInfo)[0];
+        const navTabs = getElClass('nav-tabs', userTabs)[0];
+        const tabContent = getElClass('tab-content', userInfo)[0];
 
         console.log('WME MagicWand init');
 
@@ -92,27 +87,23 @@ function run_magicwand() {
         window.wme_magic_wand_process = false;
 
         // add new box to left of the map
-        var addon = document.createElement('section');
-        addon.innerHTML = '<b>WME Magic Wand</b> v' + wmelmw_version;
+        const addon = document.createElement('section');
+        addon.innerHTML = `<b>WME Magic Wand</b> v${wmelmw_version}`;
 
-        section = document.createElement('p');
-        section.style.paddingTop = "8px";
-        section.style.textIndent = "16px";
-        section.id = "magicwand_advanced";
+        let section = document.createElement('p');
+        section.style.paddingTop = '8px';
+        section.style.textIndent = '16px';
+        section.id = 'magicwand_advanced';
         section.innerHTML = '<b>Advanced Editor Options</b><br/>'
-            + '<label>Angle threshold<br/><input type="text" id="_cMagicWandAngleThreshold" name="_cMagicWandAngleThreshold" value="12" size="3" maxlength="2" /></label><br/>'
-            + '<label><input type="checkbox" id="_cMagicWandEdit_Rotate" name="_cMagicWandEdit_Rotate" value="1" /> Enable Rotate landmarks</label><br/>'
-            + '<label><input type="checkbox" id="_cMagicWandEdit_Resize" name="_cMagicWandEdit_Resize" value="1" /> Enable Resize (no reshape)</label><br/>'
-            + '<label><input type="checkbox" id="_cMagicWandHighlight" name="_cMagicWandHighlight" value="1" /> Enable Highlight</label><br/>'
-            + '<label><input type="checkbox" id="_cMagicWandStraightHelper" name="_cMagicWandStraightHelper" value="1" /> Enable straight angle helper (hold SHIFT)</label><br/><br/><br/>';
+            + '<label>Angle threshold<br/><input type="text" id="_cMagicWandAngleThreshold" name="_cMagicWandAngleThreshold" value="12" size="3" maxlength="2" /></label><br/>';
         addon.appendChild(section);
 
-        var section = document.createElement('p');
-        section.style.paddingTop = "8px";
-        section.style.textIndent = "16px";
-        section.id = "magicwand_common";
+        section = document.createElement('p');
+        section.style.paddingTop = '8px';
+        section.style.textIndent = '16px';
+        section.id = 'magicwand_common';
         section.innerHTML = '<b>Magic wand tool</b><br/>'
-            + '<input type="button" id="_bMagicWandProcessClick" name="_bMagicWandProcessClick" value="CLICK TO START MAGIC WAND" style="background-color: green" /><br/><br/>'
+            + '<input type="button" id="_bMagicWandProcessClick" name="_bMagicWandProcessClick" value="CLICK TO START MAGIC WAND" style="color: white; background-color: green" /><br/><br/>'
             + '<b>Status:</b> <span id="_sMagicWandStatus">Disabled</span><br/>'
             + '<b>Layer:</b> <span id="_sMagicWandUsedLayer"></span><br/>'
             + '<b>Clicked pixel color to match:</b>'
@@ -121,9 +112,9 @@ function run_magicwand() {
         addon.appendChild(section);
 
         section = document.createElement('p');
-        section.style.paddingTop = "8px";
-        section.style.textIndent = "16px";
-        section.id = "magicwand_advanced";
+        section.style.paddingTop = '8px';
+        section.style.textIndent = '16px';
+        section.id = 'magicwand_advanced';
         section.innerHTML = '<b>Options</b><br/>'
             + 'Landmark type:<br/>'
             + '<select id="_sMagicWandLandmark" name="_sMagicWandLandmark" style="width: 95%"></select><br/><br/>'
@@ -132,20 +123,18 @@ function run_magicwand() {
             + '<label><input type="radio" id="_rMagicWandColorAlgorithm_lab" name="_rMagicWandColorAlgorithm" value="2" /> Human-eye Similarity</label><br/><br/>'
             + '<label for="_cMagicWandSimilarity">Tolerance</label><br/>Around 4-10, >20 very slow<br/>'
             + '<input type="text" id="_cMagicWandSimilarity" name="_cMagicWandSimilarity" value="8" size="4" maxlength="3" /><br/><br/>'
-            + '<label for="_cMagicWandConcavHull">Detailing</label><br/>Around 30-40, the bigger the less detailed<br/>'
-            + '<input type="text" id="_cMagicWandConcavHull" name="_cMagicWandConcavHull" value="8" size="4" maxlength="3" /><br/><br/>'
-            + '<label for="_cMagicWandSimplification">Landmark simplification</label><br/>Usually 0-5, lesser gives more points in polygon<br/>'
-            + '<input type="text" id="_cMagicWandSimplification" name="_cMagicWandSimplification" value="3" size="5" maxlength="4" /><br/><br/>'
+            // + '<label for="_cMagicWandSimplification">Landmark simplification</label><br/>Usually 0-5, lesser gives more points in polygon<br/>'
+            // + '<input type="text" id="_cMagicWandSimplification" name="_cMagicWandSimplification" value="3" size="5" maxlength="4" /><br/><br/>'
             + '<label for="_cMagicWandSampling">Sampling mask size</label><br/>Usually 1-3, larger - smoother and more greedy<br/>'
             + '<input type="text" id="_cMagicWandSampling" name="_cMagicWandSampling" value="3" size="3" maxlength="1" /><br/>';
         addon.appendChild(section);
 
-        var newtab = document.createElement('li');
+        const newtab = document.createElement('li');
         newtab.innerHTML = '<a href="#sidepanel-magicwand" data-toggle="tab">MagicWand</a>';
         navTabs.appendChild(newtab);
 
-        addon.id = "sidepanel-magicwand";
-        addon.className = "tab-pane";
+        addon.id = 'sidepanel-magicwand';
+        addon.className = 'tab-pane';
         tabContent.appendChild(addon);
 
         populateLandmarks();
@@ -153,342 +142,103 @@ function run_magicwand() {
 
         // UI listeners
         $('#_bMagicWandProcessClick').click(switchMagicWandStatus);
-        $('#_cMagicWandEdit_Rotate').change(updateAdvancedEditing);
-        $('#_cMagicWandEdit_Resize').change(updateAdvancedEditing);
-        $('#_cMagicWandHighlight').change(updateAdvancedEditing);
-        $('#_cMagicWandConcavHull').change(updateAdvancedEditing);
-        $('#_cMagicWandStraightHelper').change(updateAdvancedEditing);
 
         // Event listeners
-        W.selectionManager.events.register("selectionchanged", null, onLandmarkSelect);
-        window.addEventListener("beforeunload", saveWMEMagicWandOptions, false);
-        window.addEventListener("keydown", onKeyDown, false);
-        window.addEventListener("keyup", onKeyUp, false);
-
-        let extprovobserver = new MutationObserver(function(mutations) {
-           mutations.forEach(function(mutation) {
-               for (var i = 0; i < mutation.addedNodes.length; i++) {
-                   var addedNode = mutation.addedNodes[i];
-                   if (addedNode.nodeType === Node.ELEMENT_NODE && $(addedNode).hasClass('address-edit-view')) {
-                       if (W.selectionManager.hasSelectedFeatures() && W.selectionManager.getSelectedFeatures()[0].model.type === 'venue') {
-                           onLandmarkSelect();
-                       }
-                   }
-               }
-            });
-        });
-
-        extprovobserver.observe(document.getElementById('edit-panel'), { childList: true, subtree: true });
+        window.addEventListener('beforeunload', saveWMEMagicWandOptions, false);
 
         // Hotkeys
-        registerKeyShortcut("WMEMagicWand_CloneLandmark", "Clone Landmark", cloneLandmark, {"C+c": "WMEMagicWand_CloneLandmark"});
-        registerKeyShortcut("WMEMagicWand_OrthogonalizeLandmark", "Orthogonalize Landmark", Orthogonalize, {"C+x": "WMEMagicWand_OrthogonalizeLandmark"});
-        registerKeyShortcut("WMEMagicWand_SimplifyLandmark", "Simplify Landmark", simplifySelectedLandmark, {"C+j": "WMEMagicWand_SimplifyLandmark"});
-        registerKeyShortcut("WMEMagicWand_HighlightLandmark", "Highlight Landmarks", highlightLandmarks, {"C+k": "WMEMagicWand_HighlightLandmark"});
+        registerKeyShortcut('WMEMagicWand_HighlightLandmark', 'Highlight Landmarks', highlightLandmarks, { 'C+k': 'WMEMagicWand_HighlightLandmark' });
 
         // Start extension
         WMELandmarkMagicWand();
     }
 
-    function loadWMEMagicWandSettings () {
+    function loadWMEMagicWandSettings() {
         if (localStorage.WMEMagicWandScript) {
-            console.log("WME MagicWand: loading options");
-            var options = JSON.parse(localStorage.WMEMagicWandScript);
+            console.log('WME MagicWand: loading options');
+            const options = JSON.parse(localStorage.WMEMagicWandScript);
 
-            getElId('_cMagicWandEdit_Rotate').checked = typeof options[0] !== 'undefined' ? options[0] : true;
-            getElId('_cMagicWandEdit_Resize').checked = typeof options[1] !== 'undefined' && options[1];
-
-            for(var i = 0; i < getElId('_sMagicWandLandmark').options.length; i++) {
+            for (let i = 0; i < getElId('_sMagicWandLandmark').options.length; i++) {
                 if (getElId('_sMagicWandLandmark').options[i].value === options[2]) {
                     getElId('_sMagicWandLandmark').options[i].selected = true;
-                    landmarkTypeSelected = true;
                     break;
                 }
             }
 
             getElId('_cMagicWandSimilarity').value = typeof options[3] !== 'undefined' ? options[3] : 9;
-            getElId('_cMagicWandSimplification').value = typeof options[4] !== 'undefined' ? options[4] : 4;
+            // getElId('_cMagicWandSimplification').value = typeof options[4] !== 'undefined' ? options[4] : 4;
             getElId('_cMagicWandSampling').value = typeof options[5] !== 'undefined' ? options[5] : 3;
             getElId('_cMagicWandAngleThreshold').value = typeof options[6] !== 'undefined' ? options[6] : 12;
-            getElId('_cMagicWandHighlight').checked = typeof options[7] !== 'undefined' && options[7];
-            getElId('_cMagicWandConcavHull').value = typeof options[8] !== 'undefined' ? options[8] : 40;
-            getElId('_cMagicWandStraightHelper').checked = typeof options[9] !== 'undefined' ? options[9] : true;
         }
-
-        updateAdvancedEditing();
     }
 
     function registerKeyShortcut(action_name, annotation, callback, key_map) {
-        W.accelerators.addAction(action_name, {group: 'default'});
+        W.accelerators.addAction(action_name, { group: 'default' });
         W.accelerators.events.register(action_name, null, callback);
         W.accelerators._registerShortcuts(key_map);
     }
 
     function saveWMEMagicWandOptions() {
         if (localStorage) {
-            console.log("WME MagicWand: saving options");
-            var options = [];
+            console.log('WME MagicWand: saving options');
+            let options = [];
 
             // preserve previous options which may get lost after logout
-            if (localStorage.WMEMagicWandScript)
-                options = JSON.parse(localStorage.WMEMagicWandScript);
+            if (localStorage.WMEMagicWandScript) options = JSON.parse(localStorage.WMEMagicWandScript);
 
-            options[0] = getElId('_cMagicWandEdit_Rotate').checked;
-            options[1] = getElId('_cMagicWandEdit_Resize').checked;
             options[2] = getElId('_sMagicWandLandmark').value;
             options[3] = getElId('_cMagicWandSimilarity').value;
-            options[4] = getElId('_cMagicWandSimplification').value;
+            // options[4] = getElId('_cMagicWandSimplification').value;
             options[5] = getElId('_cMagicWandSampling').value;
             options[6] = getElId('_cMagicWandAngleThreshold').value;
-            options[7] = getElId('_cMagicWandHighlight').checked;
-            options[8] = getElId('_cMagicWandConcavHull').value;
-            options[8] = getElId('_cMagicWandStraightHelper').checked;
 
             localStorage.WMEMagicWandScript = JSON.stringify(options);
         }
     }
 
-    var onLandmarkSelect = function (e) {
-        var mf = W.map.getOLMap().getControlsByClass('OpenLayers.Control.ModifyFeature')[0];
-        if (typeof mf === 'undefined') {
-            setTimeout(onLandmarkSelect, 500);
-            return;
-        }
-
-        insertLandmarkSelectedButtons(e);
-
-        (function () {
-            var mf = W.map.getOLMap().getControlsByClass('OpenLayers.Control.ModifyFeature')[0];
-            if (typeof mf.wme_magicwand_helper !== 'undefined') {
-                return;
-            }
-
-            mf.wme_magicwand_helper = true;
-
-            var defaultOnStart = mf.dragControl.onStart;
-            var defaultOnComplete = mf.dragControl.onComplete;
-
-            // Reset helpers
-            window.wme_magicwand_helpers = {
-                isDragging: false,
-                draggedNode: null,
-                modifiedFeatureVertices: null,
-                modifiedFeatureVirtualVertices: null,
-                layer: null,
-                snap: null
-            };
-
-            mf.dragControl.onStart = function (node, t) {
-                window.wme_magicwand_helpers.modifiedFeatureVertices = mf.vertices.clone();
-                window.wme_magicwand_helpers.modifiedFeatureVirtualVertices = mf.virtualVertices.clone();
-                defaultOnStart(node, t);
-                onVertexDrag(node);
-            };
-            mf.dragControl.onComplete = function (node) {
-                defaultOnComplete(node);
-                onVertexDragComplete();
-            };
-        })();
-    };
-
-    var insertLandmarkSelectedButtons = function(e)
-    {
-        if(W.selectionManager.getSelectedFeatures().length === 0 || W.selectionManager.getSelectedFeatures()[0].model.type !== 'venue') return;
-        if(getElId('_bMagicWandEdit_CloneLandmark') != null) return;
-
-        $('wz-tab.venue-edit-tab-general').prepend(
-            '<div class="form-group"> \
-              <label class="control-label">Advanced options</label> \
-              <div class="controls"> \
-                <input type="button" id="_bMagicWandEdit_CloneLandmark" name="_bMagicWandEdit_CloneLandmark" class="btn btn-default" value="Clone landmark" title="Ctrl+C (default)" /> \
-                <input type="button" id="_bMagicWandEdit_Corners" name="_bMagicWandEdit_Corners" class="btn btn-default" value="Orthogonalize" title="Ctrl+X (default)"/><br/> \
-                <input type="button" id="_bMagicWandEdit_Simplify" name="_bMagicWandEdit_Simplify" class="btn btn-default" value="Simplify" title="Ctrl+J (default)"/><br/> \
-                <div class="controls-container"> \
-                    <input type="checkbox" id="_cLandmarkMagicWandEdit_Rotate" name="_cLandmarkMagicWandEdit_Rotate" value="1" /><label for="_cLandmarkMagicWandEdit_Rotate">Enable Rotate</label>\
-                </div>\
-                <div class="controls-container"> \
-                    <input type="checkbox" id="_cLandmarkWandEdit_Resize" name="_cLandmarkWandEdit_Resize" value="1" /><label for="_cLandmarkWandEdit_Resize">Enable Resize (no reshape)</label>\
-                </div>\
-              </div> \
-            </div>'
-        );
-
-        getElId('_cLandmarkMagicWandEdit_Rotate').checked = getElId('_cMagicWandEdit_Rotate').checked;
-        getElId('_cLandmarkWandEdit_Resize').checked = getElId('_cMagicWandEdit_Resize').checked;
-
-        $('#_bMagicWandEdit_CloneLandmark').click(cloneLandmark);
-        $('#_bMagicWandEdit_Corners').click(Orthogonalize);
-        $('#_bMagicWandEdit_Simplify').click(simplifySelectedLandmark);
-        $('#_cLandmarkWandEdit_Resize').change(function () {
-            getElId('_cMagicWandEdit_Resize').checked = getElId('_cLandmarkWandEdit_Resize').checked;
-            updateAdvancedEditing();
-        });
-        $('#_cLandmarkMagicWandEdit_Rotate').change(function () {
-            getElId('_cMagicWandEdit_Rotate').checked = getElId('_cLandmarkMagicWandEdit_Rotate').checked;
-            updateAdvancedEditing();
-        });
-
-
-        updateLandmarkControls();
-    };
-
-    var awaiting_controls = 0;
-    var updateLandmarkControls = function () {
-        var ModifyFeatureControl = W.geometryEditing.activeEditor;
-        if (ModifyFeatureControl === null) {
-            awaiting_controls++;
-
-            // Waiting too long
-            if (awaiting_controls > 10) {
-                console.log('Something is broken, cannot locale active editor for far too long');
-                return;
-            }
-
-            setTimeout(updateLandmarkControls, 500);
-            return;
-        }
-
-        awaiting_controls = 0;
-
-        // Reset modification mode
-        ModifyFeatureControl.mode = OpenLayers.Control.ModifyFeature.RESHAPE | OpenLayers.Control.ModifyFeature.DRAG;
-
-        if ($('#_cMagicWandEdit_Rotate').prop('checked')) {
-            ModifyFeatureControl.mode |= OpenLayers.Control.ModifyFeature.ROTATE;
-        }
-
-        if ($('#_cMagicWandEdit_Resize').prop('checked')) {
-            ModifyFeatureControl.mode |= OpenLayers.Control.ModifyFeature.RESIZE;
-            ModifyFeatureControl.mode &= ~OpenLayers.Control.ModifyFeature.RESHAPE; // Do not allow changing the form, keep aspect ratio
-        }
-
-        ModifyFeatureControl.resetVertices();
-    };
-
-    var simplifySelectedLandmark = function () {
-        var selectorManager = W.selectionManager;
-        if (!selectorManager.hasSelectedFeatures() || selectorManager.getSelectedFeatures()[0].model.type !== "venue" || !selectorManager.getSelectedFeatures()[0].model.isGeometryEditable()) {
-            return;
-        }
-        var simplifyFactor = $('#_cMagicWandSimplification').val();
-        var SelectedLandmark = selectorManager.getSelectedFeatures()[0];
-        var oldGeometry = SelectedLandmark.geometry.clone();
-
-        var LineString = new OpenLayers.Geometry.LineString(oldGeometry.components[0].components);
-        LineString = LineString.simplify(simplifyFactor);
-        var newGeometry = new OpenLayers.Geometry.Polygon(new OpenLayers.Geometry.LinearRing(LineString.components));
-
-        if (newGeometry.components[0].components.length < oldGeometry.components[0].components.length) {
-            var UpdateFeatureGeometry = require("Waze/Action/UpdateFeatureGeometry");
-            W.model.actionManager.add(new UpdateFeatureGeometry(SelectedLandmark.model, W.model.venues, oldGeometry, newGeometry));
-        }
-    };
-
-    var cloneLandmark = function () {
-        var selectorManager = W.selectionManager;
-        if (!selectorManager.hasSelectedFeatures() || selectorManager.getSelectedFeatures()[0].model.type !== 'venue') {
-            return;
-        }
-
-        var SelectedLandmark = selectorManager.getSelectedFeatures()[0];
-        var ClonedLandmark = SelectedLandmark.clone();
-        ClonedLandmark.geometry.move(50, 50); // move to some offset
-        ClonedLandmark.geometry.clearBounds();
-
-        var wazefeatureVectorLandmark = require("Waze/Feature/Vector/Landmark");
-        var wazeActionAddLandmark = require("Waze/Action/AddLandmark");
-
-        var NewLandmark = new wazefeatureVectorLandmark();
-        NewLandmark.geometry = ClonedLandmark.geometry;
-        NewLandmark.attributes.categories = SelectedLandmark.model.attributes.categories;
-
-        W.model.actionManager.add(new wazeActionAddLandmark(NewLandmark));
-        selectorManager.setSelectedModels([NewLandmark]);
-    };
-
-    var Orthogonalize = function() {
-        if (W.selectionManager.getSelectedFeatures().length <= 0 || W.selectionManager.getSelectedFeatures()[0].model.type !== 'venue') {
-            return;
-        }
-
-        var SelectedLandmark = W.selectionManager.getSelectedFeatures()[0];
-
-        var geom = SelectedLandmark.geometry.clone();
-        var components = geom.components[0].components;
-        var functor = new OrthogonalizeId(components);
-
-        //if (!functor.isDisabled(components)) {
-        //    window.alert('Unable to orthogonalize this polygon');
-        //    return;
-        //}
-
-        var newWay = functor.action();
-        var wazeActionUpdateFeatureGeometry = require("Waze/Action/UpdateFeatureGeometry");
-
-        var removeVertices = [];
-        var undoGeometry = SelectedLandmark.geometry.clone();
-        for (var i = 0; i < newWay.length; i++) {
-            if (newWay[i] === false) {
-                removeVertices.push(SelectedLandmark.geometry.components[0].components[i]);
-            } else {
-                SelectedLandmark.geometry.components[0].components[i].x = newWay[i].x;
-                SelectedLandmark.geometry.components[0].components[i].y = newWay[i].y;
-            }
-        }
-
-        if (removeVertices) {
-            SelectedLandmark.geometry.components[0].removeComponents(removeVertices);
-        }
-
-        SelectedLandmark.geometry.components[0].clearBounds();
-
-        var action = new wazeActionUpdateFeatureGeometry(SelectedLandmark.model, W.model.venues, undoGeometry, SelectedLandmark.geometry);
-        W.model.actionManager.add(action);
-
-        delete undoGeometry;
-    };
-
-    var highlightLandmarks = function () {
+    const highlightLandmarks = function() {
         if (!$('#_cMagicWandHighlight').prop('checked')) {
             return;
         }
 
-        var geom, components, functor, newWay;
+        let geom; let components; let functor; let newWay;
 
-        for (var mark in W.model.venues.objects) {
-            var SelectedLandmark = W.model.venues.get(mark);
+        const venues = W.model.venues.getObjectArray();
+        for (let i = 0; i < venues.length; i++) {
+            const mark = venues[i];
+            const SelectedLandmark = W.model.venues.get(mark);
             if (SelectedLandmark.isPoint()) {
                 continue;
             }
 
-            var poly = document.getElementById(SelectedLandmark.geometry.id);
+            const poly = document.getElementById(SelectedLandmark.geometry.id);
             // check that WME hasn't highlighted this object already
-            if (poly == null || mark.state == "Update" || SelectedLandmark.selected) {
-              continue;
+            if (poly == null || mark.state === 'Update' || SelectedLandmark.selected) {
+                continue;
             }
 
             // if already highlighted by us or by WME Color Hightlight, avoid conflict and skip
-            if (poly.getAttribute("stroke-opacity") == 0.987) {
-              continue;
+            if (poly.getAttribute('stroke-opacity') === 0.987) {
+                continue;
             }
 
             // if highlighted by mouse over, skip this one
-            if (poly.getAttribute("fill") == poly.getAttribute("stroke")) {
-              continue;
+            if (poly.getAttribute('fill') === poly.getAttribute('stroke')) {
+                continue;
             }
 
             // flag this venue as highlighted so we don't update it next time
-            poly.setAttribute("stroke-opacity", 0.987);
+            poly.setAttribute('stroke-opacity', 0.987);
 
             geom = SelectedLandmark.geometry.clone();
             components = geom.components[0].components;
             functor = new OrthogonalizeId(components);
 
             newWay = functor.action();
-            for (var i = 0; i < newWay.length; i++) {
-                if (newWay[i] === false
-                    || Math.abs(SelectedLandmark.geometry.components[0].components[i].x - newWay[i].x) > 2
-                    || Math.abs(SelectedLandmark.geometry.components[0].components[i].y - newWay[i].y) > 2
+            for (let j = 0; j < newWay.length; j++) {
+                if (newWay[j] === false
+                    || Math.abs(SelectedLandmark.geometry.components[0].components[j].x - newWay[j].x) > 2
+                    || Math.abs(SelectedLandmark.geometry.components[0].components[j].y - newWay[j].y) > 2
                 ) {
                     highlightAPlace(SelectedLandmark, '#FFC138', '#FFD38D');
                     break;
@@ -499,42 +249,41 @@ function run_magicwand() {
 
     // WME Color Highlights by Timbones
     function highlightAPlace(venue, fg, bg) {
-        var poly = document.getElementById(venue.geometry.id);
+        const poly = document.getElementById(venue.geometry.id);
         if (venue.isPoint()) {
-            poly.setAttribute("fill", fg);
-        }
-
-        else { // area
-            poly.setAttribute("stroke", fg);
-            poly.setAttribute("fill", bg);
+            poly.setAttribute('fill', fg);
+        } else { // area
+            poly.setAttribute('stroke', fg);
+            poly.setAttribute('fill', bg);
         }
     }
 
-    var OrthogonalizeId = function (way) {
-        var threshold = getElId('_cMagicWandAngleThreshold').value, // degrees within right or straight to alter
-            lowerThreshold = Math.cos((90 - threshold) * Math.PI / 180),
-            upperThreshold = Math.cos(threshold * Math.PI / 180);
+    const OrthogonalizeId = function(way) {
+        const threshold = getElId('_cMagicWandAngleThreshold').value; // degrees within right or straight to alter
+        const lowerThreshold = Math.cos((90 - threshold) * (Math.PI / 180));
+        const upperThreshold = Math.cos(threshold * (Math.PI / 180));
 
         this.way = way;
 
-        this.action = function () {
-            var nodes = this.way,
-                points = nodes.slice(0, nodes.length - 1).map(function (n) {
-                    var t = n.clone();
-                    var p = t.transform(new OpenLayers.Projection("EPSG:900913"), new OpenLayers.Projection("EPSG:4326"));
-                    p.y = lat2latp(p.y);
-                    return p;
-                }),
-                corner = {i: 0, dotp: 1},
-                epsilon = 1e-4,
-                i, j, score, motions;
+        this.action = function orth() {
+            const nodes = this.way;
+            let points = nodes.slice(0, nodes.length - 1).map(n => {
+                const t = n.clone();
+                const p = t.transform(new OpenLayers.Projection('EPSG:900913'), new OpenLayers.Projection('EPSG:4326'));
+                p.y = lat2latp(p.y);
+                return p;
+            });
+            const corner = { i: 0, dotp: 1 };
+            const epsilon = 1e-4;
+            let i; let j; let score; let
+                motions;
 
             // Triangle
             if (nodes.length === 4) {
                 for (i = 0; i < 1000; i++) {
                     motions = points.map(calcMotion);
 
-                    var tmp = addPoints(points[corner.i], motions[corner.i]);
+                    const tmp = addPoints(points[corner.i], motions[corner.i]);
                     points[corner.i].x = tmp.x;
                     points[corner.i].y = tmp.y;
 
@@ -544,13 +293,13 @@ function run_magicwand() {
                     }
                 }
 
-                var n = points[corner.i];
+                const n = points[corner.i];
                 n.y = latp2lat(n.y);
-                var pp = n.transform(new OpenLayers.Projection("EPSG:4326"), new OpenLayers.Projection("EPSG:900913"));
+                const pp = n.transform(new OpenLayers.Projection('EPSG:4326'), new OpenLayers.Projection('EPSG:900913'));
 
-                var id = nodes[corner.i].id;
+                const { id } = nodes[corner.i];
                 for (i = 0; i < nodes.length; i++) {
-                    if (nodes[i].id != id) {
+                    if (nodes[i].id !== id) {
                         continue;
                     }
 
@@ -559,84 +308,82 @@ function run_magicwand() {
                 }
 
                 return nodes;
-            } else {
-                var best,
-                    originalPoints = nodes.slice(0, nodes.length - 1).map(function (n) {
-                        var t = n.clone();
-                        var p = t.transform(new OpenLayers.Projection("EPSG:900913"), new OpenLayers.Projection("EPSG:4326"));
-                        p.y = lat2latp(p.y);
-                        return p;
-                    });
-                    score = Infinity;
+            }
+            let best;
+            const originalPoints = nodes.slice(0, nodes.length - 1).map(n => {
+                const t = n.clone();
+                const p = t.transform(new OpenLayers.Projection('EPSG:900913'), new OpenLayers.Projection('EPSG:4326'));
+                p.y = lat2latp(p.y);
+                return p;
+            });
+            score = Infinity;
 
-                for (i = 0; i < 1000; i++) {
-                    motions = points.map(calcMotion);
-                    for (j = 0; j < motions.length; j++) {
-                        var tmp = addPoints(points[j], motions[j]);
-                        points[j].x = tmp.x;
-                        points[j].y = tmp.y;
-                    }
-                    var newScore = squareness(points);
-                    if (newScore < score) {
-                        best = [].concat(points);
-                        score = newScore;
-                    }
-                    if (score < epsilon) {
-                        break;
-                    }
+            for (i = 0; i < 1000; i++) {
+                motions = points.map(calcMotion);
+                for (j = 0; j < motions.length; j++) {
+                    const tmp = addPoints(points[j], motions[j]);
+                    points[j].x = tmp.x;
+                    points[j].y = tmp.y;
                 }
-
-                points = best;
-
-                for (i = 0; i < points.length; i++) {
-                    // only move the points that actually moved
-                    if (originalPoints[i].x !== points[i].x || originalPoints[i].y !== points[i].y) {
-                        var n = points[i];
-                        n.y = latp2lat(n.y);
-                        var pp = n.transform(new OpenLayers.Projection("EPSG:4326"), new OpenLayers.Projection("EPSG:900913"));
-
-                        var id = nodes[i].id;
-                        for (j = 0; j < nodes.length; j++) {
-                            if (nodes[j].id != id) {
-                                continue;
-                            }
-
-                            nodes[j].x = pp.x;
-                            nodes[j].y = pp.y;
-                        }
-                    }
+                const newScore = squareness(points);
+                if (newScore < score) {
+                    best = [].concat(points);
+                    score = newScore;
                 }
-
-                // remove empty nodes on straight sections
-                for (i = 0; i < points.length; i++) {
-                    var dotp = normalizedDotProduct(i, points);
-                    if (dotp < -1 + epsilon) {
-                        id = nodes[i].id;
-                        for (j = 0; j < nodes.length; j++) {
-                            if (nodes[j].id != id) {
-                                continue;
-                            }
-
-                            nodes[j] = false;
-                        }
-                    }
+                if (score < epsilon) {
+                    break;
                 }
-
-                return nodes;
             }
 
-            function calcMotion(b, i, array) {
-                var a = array[(i - 1 + array.length) % array.length],
-                    c = array[(i + 1) % array.length],
-                    p = subtractPoints(a, b),
-                    q = subtractPoints(c, b),
-                    scale, dotp;
+            points = best;
 
-                scale = 2 * Math.min(euclideanDistance(p, {x: 0, y: 0}), euclideanDistance(q, {x: 0, y: 0}));
+            for (i = 0; i < points.length; i++) {
+                // only move the points that actually moved
+                if (originalPoints[i].x !== points[i].x || originalPoints[i].y !== points[i].y) {
+                    const n = points[i];
+                    n.y = latp2lat(n.y);
+                    const pp = n.transform(new OpenLayers.Projection('EPSG:4326'), new OpenLayers.Projection('EPSG:900913'));
+
+                    const { id } = nodes[i];
+                    for (j = 0; j < nodes.length; j++) {
+                        if (nodes[j].id !== id) {
+                            continue;
+                        }
+
+                        nodes[j].x = pp.x;
+                        nodes[j].y = pp.y;
+                    }
+                }
+            }
+
+            // remove empty nodes on straight sections
+            for (i = 0; i < points.length; i++) {
+                const dotp = normalizedDotProduct(i, points);
+                if (dotp < -1 + epsilon) {
+                    const id = nodes[i].id;
+                    for (j = 0; j < nodes.length; j++) {
+                        if (nodes[j].id !== id) {
+                            continue;
+                        }
+
+                        nodes[j] = false;
+                    }
+                }
+            }
+
+            return nodes;
+
+            function calcMotion(b, k, array) {
+                const a = array[(k - 1 + array.length) % array.length];
+                const c = array[(k + 1) % array.length];
+                let p = subtractPoints(a, b);
+                let q = subtractPoints(c, b);
+
+                const scale = 2 * Math.min(euclideanDistance(p, { x: 0, y: 0 }), euclideanDistance(q, { x: 0, y: 0 }));
                 p = normalizePoint(p, 1.0);
                 q = normalizePoint(q, 1.0);
 
-                dotp = filterDotProduct(p.x * q.x + p.y * q.y);
+                let dotp = filterDotProduct(p.x * q.x + p.y * q.y);
 
                 // nasty hack to deal with almost-straight segments (angle is closer to 180 than to 90/270).
                 if (array.length > 3) {
@@ -644,7 +391,7 @@ function run_magicwand() {
                         dotp += 1.0;
                     }
                 } else if (dotp && Math.abs(dotp) < corner.dotp) {
-                    corner.i = i;
+                    corner.i = k;
                     corner.dotp = Math.abs(dotp);
                 }
 
@@ -653,8 +400,8 @@ function run_magicwand() {
         };
 
         function squareness(points) {
-            return points.reduce(function (sum, val, i, array) {
-                var dotp = normalizedDotProduct(i, array);
+            return points.reduce((sum, val, i, array) => {
+                let dotp = normalizedDotProduct(i, array);
 
                 dotp = filterDotProduct(dotp);
                 return sum + 2.0 * Math.min(Math.abs(dotp - 1.0), Math.min(Math.abs(dotp), Math.abs(dotp + 1)));
@@ -662,11 +409,11 @@ function run_magicwand() {
         }
 
         function normalizedDotProduct(i, points) {
-            var a = points[(i - 1 + points.length) % points.length],
-                b = points[i],
-                c = points[(i + 1) % points.length],
-                p = subtractPoints(a, b),
-                q = subtractPoints(c, b);
+            const a = points[(i - 1 + points.length) % points.length];
+            const b = points[i];
+            const c = points[(i + 1) % points.length];
+            let p = subtractPoints(a, b);
+            let q = subtractPoints(c, b);
 
             p = normalizePoint(p, 1.0);
             q = normalizePoint(q, 1.0);
@@ -675,21 +422,22 @@ function run_magicwand() {
         }
 
         function subtractPoints(a, b) {
-            return {x: a.x - b.x, y: a.y - b.y};
+            return { x: a.x - b.x, y: a.y - b.y };
         }
 
         function addPoints(a, b) {
-            return {x: a.x + b.x, y: a.y + b.y};
+            return { x: a.x + b.x, y: a.y + b.y };
         }
 
         function euclideanDistance(a, b) {
-            var x = a.x - b.x, y = a.y - b.y;
+            const x = a.x - b.x; const
+                y = a.y - b.y;
             return Math.sqrt((x * x) + (y * y));
         }
 
         function normalizePoint(point, scale) {
-            var vector = {x: 0, y: 0};
-            var length = Math.sqrt(point.x * point.x + point.y * point.y);
+            const vector = { x: 0, y: 0 };
+            const length = Math.sqrt(point.x * point.x + point.y * point.y);
             if (length !== 0) {
                 vector.x = point.x / length;
                 vector.y = point.y / length;
@@ -709,42 +457,28 @@ function run_magicwand() {
             return 0;
         }
 
-        this.isDisabled = function (nodes) {
-            var points = nodes.slice(0, nodes.length - 1).map(function (n) {
-                var p = n.toLonLat().transform(new OpenLayers.Projection("EPSG:900913"), new OpenLayers.Projection("EPSG:4326"));
-                return {x: p.lat, y: p.lon};
+        this.isDisabled = function isDisabled(nodes) {
+            const points = nodes.slice(0, nodes.length - 1).map(n => {
+                const p = n.toLonLat().transform(new OpenLayers.Projection('EPSG:900913'), new OpenLayers.Projection('EPSG:4326'));
+                return { x: p.lat, y: p.lon };
             });
 
             return squareness(points);
         };
     };
 
-    var updateAdvancedEditing = function ()
-    {
-        if ($('#_cMagicWandHighlight').prop('checked')) {
-            window.setInterval(highlightLandmarks, 250);
-        }
-
-        updateLandmarkControls();
-
-        // var selectorManager = W.selectionManager;
-        // if (selectorManager.selectedItems.length > 0 && selectorManager.selectedItems[0].model.type === 'venue') {
-        //     selectorManager.selectControl.select(selectorManager.selectedItems[0]);
-        // }
-    };
-
-
-    var switchMagicWandStatus = function () {
+    const switchMagicWandStatus = function() {
         window.wme_magic_wand = !window.wme_magic_wand;
-        var bgColor, status, btnText;
+        let bgColor; let status; let
+            btnText;
         if (window.wme_magic_wand) {
             bgColor = 'red';
             btnText = 'CLICK TO STOP MAGIC WAND';
-            status = 'Waiting for click'
+            status = 'Waiting for click';
         } else {
             bgColor = 'green';
             btnText = 'CLICK TO START MAGIC WAND';
-            status = 'Disabled'
+            status = 'Disabled';
         }
 
         $(this).css('background-color', bgColor);
@@ -758,141 +492,115 @@ function run_magicwand() {
     }
 
     function populateLandmarks() {
-        var landmarkTypes = getElId('_sMagicWandLandmark');
-        var translations = window.I18n.translations[window.I18n.currentLocale()].venues.categories;
+        const landmarkTypes = getElId('_sMagicWandLandmark');
+        const translations = window.I18n.translations[window.I18n.currentLocale()].venues.categories;
 
-        var filtered_translations = [];
-        for (var id in translations) {
-            if (!translations.hasOwnProperty(id)) {
-                continue;
-            }
-
-            filtered_translations.push({
+        let filteredTranslations = Object.keys(translations)
+            .filter(id => translations.hasOwnProperty(id))
+            .map(id => ({
                 type_id: id,
                 type_name: translations[id]
-            });
-        }
+            }));
 
         // Sorting by name
-        filtered_translations = filtered_translations.sort(function (a, b) {
-            return a.type_name.localeCompare(b.type_name);
-        });
+        filteredTranslations = filteredTranslations.sort((a, b) => a.type_name.localeCompare(b.type_name));
 
-        for (var i = 0; i < filtered_translations.length; i++) {
-            id = filtered_translations[i].type_id;
-            var type = filtered_translations[i].type_name;
+        filteredTranslations.forEach(trans => {
+            const id = trans.type_id;
+            const type = trans.type_name;
 
-            var usrOption = document.createElement('option');
-            var usrText = document.createTextNode(type);
+            const usrOption = document.createElement('option');
+            const usrText = document.createTextNode(type);
             usrOption.setAttribute('value', id);
             usrOption.appendChild(usrText);
             landmarkTypes.appendChild(usrOption);
-        }
+        });
     }
 
     function lat2latp(lat) {
-        return 180 / Math.PI * Math.log(Math.tan(Math.PI / 4 + lat * (Math.PI / 180) / 2));
+        return (180 / Math.PI) * Math.log(Math.tan(Math.PI / 4 + lat * ((Math.PI / 180) / 2)));
     }
 
     function latp2lat(a) {
-        return 180 / Math.PI * (2 * Math.atan(Math.exp(a * Math.PI / 180)) - Math.PI / 2);
+        return (180 / Math.PI) * (2 * Math.atan(Math.exp(a * (Math.PI / 180))) - Math.PI / 2);
     }
 
     function WMELandmarkMagicWand() {
-        var W = window.W;
+        const { W } = window;
 
-        var layer;
+        let layer;
 
-        var LatLon;
-        var pixel;
+        let LatLon;
+        let pixel;
 
-        var canvas, draw_canvas, total_tiles, clickCanvasX, clickCanvasY, viewOffsetX, viewOffsetY;
-        var context;
+        let canvas; let draw_canvas; let total_tiles; let clickCanvasX; let clickCanvasY; let viewOffsetX; let
+            viewOffsetY;
+        let context;
 
-        var simplify_param;
-        var color_sensitivity;
-        var color_distance;
-        var color_algorithm;
-        var landmark_type;
-        var concave_threshold;
-        var sampling = 3;
-        var detailing = 40;
-        var waited_for = 0;
-        var is_reload_tiles = true;
+        let color_sensitivity;
+        let color_distance;
+        let color_algorithm;
+        let landmark_type;
+        let sampling = 3;
+        let waited_for = 0;
+        let is_reload_tiles = true;
 
-        W.map.events.register('moveend', map, function (e) {
+        W.map.events.register('moveend', null, () => {
             is_reload_tiles = true;
         });
 
-        W.map.events.register('changebaselayer', map, function (e) {
+        W.map.events.register('changebaselayer', null, () => {
             is_reload_tiles = true;
         });
 
-        W.map.events.register('click', map, function (e) {
+        W.map.events.register('click', null, e => {
             if (!window.wme_magic_wand || window.wme_magic_wand_process) {
                 return;
             }
 
             window.wme_magic_wand_process = true;
-            $('#_bMagicWandProcessClick').attr("disabled", "disabled");
+            $('#_bMagicWandProcessClick').attr('disabled', 'disabled');
 
             // Get current active layer to process
             layer = null;
-            var visible_layers = W.map.getLayersBy("visibility", true);
-            for (var l = 0; l < visible_layers.length; l++) {
-                if (visible_layers[l].name === "satellite_imagery") { // (true === visible_layers[l].isBaseLayer) {
+
+            const visible_layers = W.map.getLayersBy('visibility', true);
+            for (let l = 0; l < visible_layers.length; l++) {
+                if (visible_layers[l].name === 'satellite_imagery') { // (true === visible_layers[l].isBaseLayer) {
                     layer = visible_layers[l];
 
-                    $('#_sMagicWandUsedLayer').html(layer.name)
+                    $('#_sMagicWandUsedLayer').html(layer.name);
                     break;
                 }
             }
 
-            if (typeof layer == 'undefined') {
+            if (typeof layer === 'undefined') {
                 resetProcessState();
                 alert('Please make of the base layers active (default to Google)');
                 return;
             }
 
-            if (wme_magic_wand_debug) {
-                console.log('WME MagicWand: layer selected', layer.name, layer);
-            }
-
-            simplify_param = parseInt(getElId('_cMagicWandSimplification').value);
-            color_sensitivity = parseInt(getElId('_cMagicWandSimilarity').value);
-            color_distance = parseInt(getElId('_cMagicWandSimilarity').value);
-            color_algorithm = getElId("_rMagicWandColorAlgorithm_lab").checked ? "LAB" : "sensitivity";
-            landmark_type = getElId("_sMagicWandLandmark").options[getElId("_sMagicWandLandmark").selectedIndex].value;
-            concave_threshold = parseFloat(getElId('_cMagicWandSimplification').value);
-            sampling = parseInt(getElId('_cMagicWandSampling').value);
-            detailing = parseInt(getElId('_cMagicWandConcavHull').value);
-
-            if (wme_magic_wand_debug) {
-                console.log('WME MagicWand algorithm:', color_algorithm);
-                console.log('WME MagicWand sensitivity:', color_sensitivity);
-                console.log('WME MagicWand simplification:', simplify_param);
-                console.log('WME MagicWand landmark type:', landmark_type);
-                console.log('WME MagicWand sampling mask size:', sampling);
-                console.log('WME MagicWand concave hull detailing:', detailing);
-            }
+            // simplify_param = parseInt(getElId('_cMagicWandSimplification').value, 10);
+            color_sensitivity = parseInt(getElId('_cMagicWandSimilarity').value, 10);
+            color_distance = parseInt(getElId('_cMagicWandSimilarity').value, 10);
+            color_algorithm = getElId('_rMagicWandColorAlgorithm_lab').checked ? 'LAB' : 'sensitivity';
+            landmark_type = getElId('_sMagicWandLandmark').options[getElId('_sMagicWandLandmark').selectedIndex].value;
+            sampling = parseInt(getElId('_cMagicWandSampling').value, 10);
 
             pixel = e.xy;
-            LatLon = W.map.getLonLatFromPixel(pixel);
+            const geojsonLatLon = W.map.getLonLatFromPixel(pixel);
+            const pt = {
+                type: 'Point',
+                coordinates: [geojsonLatLon.lon, geojsonLatLon.lat]
+            };
+            const olLatLon = W.userscripts.toOLGeometry(pt);
+            LatLon = { lon: olLatLon.x, lat: olLatLon.y };
 
-            if (wme_magic_wand_debug) {
-                console.log('WME MagicWand: click event', e);
-                console.log('WME MagicWand: click event XY', e.xy, ', in map coords', LatLon);
-            }
-
-            var tile_size = layer.grid[0][0].size;
-
-            if (wme_magic_wand_debug) {
-                console.log('WME MagicWand: grid size in pixels', tile_size);
-            }
+            const tile_size = layer.grid[0][0].size;
 
             updateStatus('Creating canvas');
 
-            if (typeof canvas != 'undefined' && typeof context != 'undefined') {
+            if (typeof canvas !== 'undefined' && typeof context !== 'undefined') {
                 if (is_reload_tiles) {
                     canvas.width = tile_size.h * layer.grid[0].length;
                     canvas.height = tile_size.w * layer.grid.length;
@@ -905,39 +613,29 @@ function run_magicwand() {
                 context = canvas.getContext('2d');
             }
 
-            if (typeof draw_canvas == 'undefined') {
+            if (typeof draw_canvas === 'undefined') {
                 draw_canvas = $('<canvas/>')[0];
             }
 
             draw_canvas.width = canvas.width;
             draw_canvas.height = canvas.height;
 
-            if (wme_magic_wand_debug) {
-                $('body').append(draw_canvas);
-            }
-
             total_tiles = layer.grid.length * layer.grid[0].length;
             waited_for = 0;
 
-            if (wme_magic_wand_debug) {
-                console.log('WME MagicWand: total tiles in grid', total_tiles);
-                console.log('WME MagicWand: canvas', canvas);
-                console.log('WME MagicWand: context', context);
-            }
-
-
-            var clientX, clientY;
-            var offsetX, offsetY;
-            var imageX, imageY;
-            var tile, img, location;
+            let clientX; let
+                clientY;
+            let offsetX; let
+                offsetY;
+            let imageX; let
+                imageY;
+            let tile; let img; let
+                location;
 
             updateStatus('Pre-processing tiles');
-            if (wme_magic_wand_debug) {
-                console.log('WME MagicWand: trying to load tiles');
-            }
 
-            for (var tilerow = 0; tilerow < layer.grid.length; tilerow++) {
-                for (var tilei = 0; tilei < layer.grid[tilerow].length; tilei++) {
+            for (let tilerow = 0; tilerow < layer.grid.length; tilerow++) {
+                for (let tilei = 0; tilei < layer.grid[tilerow].length; tilei++) {
                     tile = layer.grid[tilerow][tilei];
 
                     if (tile.bounds.containsLonLat(LatLon, false)) {
@@ -971,31 +669,32 @@ function run_magicwand() {
                         .data('tilerow', tilerow)
                         .attr('crossOrigin', 'anonymous');
 
-                    img.onload = function () {
-                        var img = this;
-                        var tilei = $(img).data('tilei');
-                        var tilerow = $(img).data('tilerow');
+                    // eslint-disable-next-line no-loop-func
+                    img.onload = function onload() {
+                        const img1 = this;
+                        const tilei1 = $(img1).data('tilei');
+                        const tilerow1 = $(img1).data('tilerow');
 
                         // Add tile to canvas
-                        context.drawImage(img, tile_size.w * tilei, tile_size.h * tilerow, img.width, img.height);
+                        context.drawImage(img1, tile_size.w * tilei1, tile_size.h * tilerow1, img1.width, img1.height);
 
                         total_tiles--;
                     };
 
-                    img.onerror = function (e) {
-                        console.log('WME MagicWand: Cannot load tile: ', e);
+                    img.onerror = function onerror(e1) {
+                        console.log('WME MagicWand: Cannot load tile: ', e1);
                     };
 
-                    var img_url = tile.url;
+                    let img_url = tile.url;
                     // Experimental support for Map Overlays extension
                     // DO NOT USE FOR EDITS
-                    var alt_img = $('img[data-default_url="' + img_url +'"]');
+                    const alt_img = $(`img[data-default_url="${img_url}"]`);
                     if (alt_img.length > 0) {
                         img_url = alt_img[0].src;
                     }
 
                     location = getLocation(img_url);
-                    img.src = img_url + (typeof location.search == 'undefined' || location.search == '' ? '?' : '&') + 'dummy=wmemagicwand';
+                    img.src = `${img_url + (typeof location.search === 'undefined' || location.search === '' ? '?' : '&')}dummy=wmemagicwand`;
                 }
             }
 
@@ -1004,14 +703,13 @@ function run_magicwand() {
             } else {
                 process();
             }
-
         });
 
         function waitForLoad() {
             waited_for++;
             if (total_tiles > 0) {
                 if (waited_for > 25) {
-                    alert('Waiting too long for tiles to be reloaded, tiles left to load: ' + total_tiles);
+                    alert(`Waiting too long for tiles to be reloaded, tiles left to load: ${total_tiles}`);
                     resetProcessState();
                     return;
                 }
@@ -1024,16 +722,16 @@ function run_magicwand() {
         }
 
         function getPixelInfo(canvas_data, x, y) {
-            var offset = (y * canvas.width + x) * 4;
-            return [canvas_data[offset], canvas_data[offset + 1 ], canvas_data[offset + 2], canvas_data[offset + 3]];
+            const offset = (y * canvas.width + x) * 4;
+            return [canvas_data[offset], canvas_data[offset + 1], canvas_data[offset + 2], canvas_data[offset + 3]];
         }
 
         function getPixelAverageSample(canvas_data, x, y) {
-            var sample_info;
-            var average = [0, 0, 0, 0];
-            var total_samples = 0;
-            for (var xi = x - sampling; xi < x + sampling; xi++) {
-                for (var yi = y - sampling; yi < y + sampling; yi++) {
+            let sample_info;
+            const average = [0, 0, 0, 0];
+            let total_samples = 0;
+            for (let xi = x - sampling; xi < x + sampling; xi++) {
+                for (let yi = y - sampling; yi < y + sampling; yi++) {
                     if (xi < 0 || yi < 0 || xi >= canvas.width || yi >= canvas.height) {
                         continue;
                     }
@@ -1052,37 +750,34 @@ function run_magicwand() {
         }
 
         function process() {
-            var canvas_data = context.getImageData(0, 0, canvas.width, canvas.height).data;
-            var ref_pixel = getPixelInfo(canvas_data, clickCanvasX, clickCanvasY);
+            let canvas_data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+            const ref_pixel = getPixelInfo(canvas_data, clickCanvasX, clickCanvasY);
 
-            if (wme_magic_wand_debug) {
-                console.log('WME MagicWand: clicked pixel data', ref_pixel);
-            }
-
-            var draw_canvas_context = draw_canvas.getContext('2d');
+            const draw_canvas_context = draw_canvas.getContext('2d');
             draw_canvas_context.drawImage(canvas, 0, 0);
 
-            $('#_dMagicWandColorpicker').css('background-color', 'rgb(' + ref_pixel[0] + ',' + ref_pixel[1] + ',' + ref_pixel[2] + ')');
+            $('#_dMagicWandColorpicker').css('background-color', `rgb(${ref_pixel[0]},${ref_pixel[1]},${ref_pixel[2]})`);
             $('#magicwand_common').hide().show();
 
-            var current_pixel;
-            var processed_pixels = [];
-            var polyPixels = [];
-            var g = 0;
-            var minX = Number.MAX_VALUE;
-            var first_pixel = null;
+            let current_pixel;
+            let processed_pixels = [];
+            const polyPixels = [];
+            let g = 0;
+            let minX = Number.MAX_VALUE;
+            let first_pixel = null;
 
-            var stack = [
+            const stack = [
                 [clickCanvasX, clickCanvasY]
             ];
 
-            var x, y, c_pixel, r;
-            var viewX, viewY;
+            let x; let y; let c_pixel;
+            let viewX; let
+                viewY;
 
             updateStatus('Processing tiles image');
 
-            var id = draw_canvas_context.createImageData(1, 1);
-            var d = id.data;
+            const id = draw_canvas_context.createImageData(1, 1);
+            const d = id.data;
             d[0] = 255;
             d[1] = 0;
             d[2] = 0;
@@ -1093,69 +788,57 @@ function run_magicwand() {
                 current_pixel = stack.pop();
 
                 // Already processed before
-                if (typeof processed_pixels[current_pixel[0] + ',' + current_pixel[1]] != 'undefined') {
+                if (typeof processed_pixels[`${current_pixel[0]},${current_pixel[1]}`] !== 'undefined') {
                     continue;
                 } else {
-                    processed_pixels[current_pixel[0] + ',' + current_pixel[1]] = true;
+                    processed_pixels[`${current_pixel[0]},${current_pixel[1]}`] = true;
                 }
 
-                if (current_pixel[0] < 0 || current_pixel[0] >= canvas.width)
-                    continue;
-                if (current_pixel[1] < 0 || current_pixel[1] >= canvas.height)
-                    continue;
+                if (current_pixel[0] < 0 || current_pixel[0] >= canvas.width) continue;
+                if (current_pixel[1] < 0 || current_pixel[1] >= canvas.height) continue;
 
                 x = current_pixel[0];
                 y = current_pixel[1];
                 c_pixel = getPixelAverageSample(canvas_data, x, y);
 
-                if ((color_algorithm == 'sensitivity' && !colorDistance(c_pixel, ref_pixel)) ||
-                    (color_algorithm == 'LAB' && calcColorDistance(c_pixel, ref_pixel) > color_distance)) {
-
+                if ((color_algorithm === 'sensitivity' && !colorDistance(c_pixel, ref_pixel))
+                    || (color_algorithm === 'LAB' && calcColorDistance(c_pixel, ref_pixel) > color_distance)) {
                     viewX = x + viewOffsetX;
                     viewY = y + viewOffsetY;
 
                     if (viewX < minX) {
                         minX = viewX;
                         first_pixel = [viewX, viewY];
-                    } else if (viewX == minX && viewY < first_pixel[1]) {
+                    } else if (viewX === minX && viewY < first_pixel[1]) {
                         first_pixel = [viewX, viewY];
                     }
 
                     // Outer pixel found
                     polyPixels.push([viewX, viewY]);
-
-                    if (wme_magic_wand_debug) {
-                        // Drawing outer border
-                        draw_canvas_context.putImageData(id, x, y);
-                    }
                 } else {
                     // Inner point, add neighboring points to the stack
-                    if (wme_magic_wand_debug) {
-                        draw_canvas_context.putImageData(id, x, y);
-                    }
-
-                    if (typeof processed_pixels[(current_pixel[0] - 1) + ',' + current_pixel[1]] == 'undefined') {
+                    if (typeof processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]}`] === 'undefined') {
                         stack.push([
                             current_pixel[0] - 1,
                             current_pixel[1]
                         ]);
                     }
 
-                    if (typeof processed_pixels[(current_pixel[0] + 1) + ',' + current_pixel[1]] == 'undefined') {
+                    if (typeof processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}`] === 'undefined') {
                         stack.push([
                             current_pixel[0] + 1,
                             current_pixel[1]
                         ]);
                     }
 
-                    if (typeof processed_pixels[(current_pixel[0]) + ',' + current_pixel[1] - 1] == 'undefined') {
+                    if (typeof processed_pixels[`${current_pixel[0]},${current_pixel[1]}` - 1] === 'undefined') {
                         stack.push([
                             current_pixel[0],
                             current_pixel[1] - 1
                         ]);
                     }
 
-                    if (typeof processed_pixels[(current_pixel[0]) + ',' + current_pixel[1] + 1] == 'undefined') {
+                    if (typeof processed_pixels[`${current_pixel[0]},${current_pixel[1]}${1}`] === 'undefined') {
                         stack.push([
                             current_pixel[0],
                             current_pixel[1] + 1
@@ -1163,38 +846,31 @@ function run_magicwand() {
                     }
 
                     // Experimental: with diagonal pixels
-                    if (typeof processed_pixels[(current_pixel[0] + 1) + ',' + current_pixel[1] + 1] == 'undefined') {
+                    if (typeof processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}${1}`] === 'undefined') {
                         stack.push([
                             current_pixel[0],
                             current_pixel[1] + 1
                         ]);
                     }
-                    if (typeof processed_pixels[(current_pixel[0] + 1) + ',' + current_pixel[1] - 1] == 'undefined') {
+                    if (typeof processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}` - 1] === 'undefined') {
                         stack.push([
                             current_pixel[0],
                             current_pixel[1] + 1
                         ]);
                     }
-                    if (typeof processed_pixels[(current_pixel[0] - 1) + ',' + current_pixel[1] + 1] == 'undefined') {
+                    if (typeof processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]}${1}`] === 'undefined') {
                         stack.push([
                             current_pixel[0],
                             current_pixel[1] + 1
                         ]);
                     }
-                    if (typeof processed_pixels[(current_pixel[0] - 1) + ',' + current_pixel[1] - 1] == 'undefined') {
+                    if (typeof processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]}` - 1] === 'undefined') {
                         stack.push([
                             current_pixel[0],
                             current_pixel[1] + 1
                         ]);
                     }
                 }
-            }
-
-            if (wme_magic_wand_debug) {
-                console.log('WME MagicWand: iterations done (should be way less than 1,000,000)', g);
-                console.log('WME MagicWand: non-processed pixels left (should be 0)', stack.length);
-                console.log('WME MagicWand: pixels processed', Object.keys(processed_pixels).length);
-                console.log('WME MagicWand: Found pixels (should be way more than 3)', polyPixels.length);
             }
 
             // Clear unnecessary data
@@ -1202,16 +878,18 @@ function run_magicwand() {
             current_pixel = [];
             canvas_data = [];
 
+            let points;
+
             if (polyPixels.length > 2) {
                 updateStatus('Computing convex hull');
 
-                var points = [];
-                for (var j = 0; j < polyPixels.length; j++) {
+                points = [];
+                for (let j = 0; j < polyPixels.length; j++) {
                     points.push(new Point(polyPixels[j][0], polyPixels[j][1]));
                 }
 
-                var convolutionHull = hull(points, 40, ['.x', '.y']);
-                createLandmark(convolutionHull, simplify_param);
+                const convolutionHull = hull(points, 40, ['.x', '.y']);
+                createLandmark(convolutionHull /* , simplify_param */);
             } else {
                 points = [];
                 resetProcessState('Please, try again, no useful points found');
@@ -1223,44 +901,45 @@ function run_magicwand() {
         }
 
         function resetProcessState(status_msg) {
-            status_msg = typeof status_msg == 'string' ? status_msg : 'Waiting for click';
+            status_msg = typeof status_msg === 'string' ? status_msg : 'Waiting for click';
 
             window.wme_magic_wand_process = false;
-            $('#_bMagicWandProcessClick').removeAttr("disabled");
+            $('#_bMagicWandProcessClick').removeAttr('disabled');
             updateStatus(status_msg);
         }
 
         function colorDistance(c_pixel, ref_pixel) {
-            return (Math.abs(c_pixel[0] - ref_pixel[0]) <= color_sensitivity &&
-                Math.abs(c_pixel[1] - ref_pixel[1]) <= color_sensitivity &&
-                Math.abs(c_pixel[2] - ref_pixel[2]) <= color_sensitivity &&
-                Math.abs(c_pixel[3] - ref_pixel[3]) <= color_sensitivity);
+            return (Math.abs(c_pixel[0] - ref_pixel[0]) <= color_sensitivity
+                && Math.abs(c_pixel[1] - ref_pixel[1]) <= color_sensitivity
+                && Math.abs(c_pixel[2] - ref_pixel[2]) <= color_sensitivity
+                && Math.abs(c_pixel[3] - ref_pixel[3]) <= color_sensitivity);
         }
 
-        function createLandmark(points, simplify) {
-            var polyPoints = [];
-            var o, point_lonlat;
+        function createLandmark(points /* , simplify */) {
+            const polyPoints = [];
+            let o; let
+                point_lonlat;
 
-            for (var k = 0; k < points.length; k++) {
+            for (let k = 0; k < points.length; k++) {
                 o = points[k];
                 point_lonlat = W.map.getLonLatFromPixel(new OpenLayers.Pixel(o.x, o.y));
-                polyPoints.push(new OpenLayers.Geometry.Point(point_lonlat.lon, point_lonlat.lat));
+                polyPoints.push([point_lonlat.lon, point_lonlat.lat]);
             }
 
-            var LineString = new OpenLayers.Geometry.LineString(polyPoints);
-            if (simplify > 0) {
-                LineString = LineString.simplify(simplify);
-            }
+            // const LineString = new OpenLayers.Geometry.LineString(polyPoints);
+            // if (simplify > 0) {
+            //     LineString = LineString.simplify(simplify);
+            // }
+            window.turf = turf;
+            const polygon = turf.polygon([polyPoints]).geometry;
 
-            var wazefeatureVectorLandmark = require("Waze/Feature/Vector/Landmark");
-            var wazeActionAddLandmark = require("Waze/Action/AddLandmark");
+            const WazefeatureVectorLandmark = require('Waze/Feature/Vector/Landmark');
+            const WazeActionAddLandmark = require('Waze/Action/AddLandmark');
 
-            var polygon = new OpenLayers.Geometry.Polygon(new OpenLayers.Geometry.LinearRing(LineString.components));
-            var landmark = new wazefeatureVectorLandmark();
-            landmark.geometry = polygon;
+            const landmark = new WazefeatureVectorLandmark({ geoJSONGeometry: polygon });
             landmark.attributes.categories = [landmark_type];
 
-            W.model.actionManager.add(new wazeActionAddLandmark(landmark));
+            W.model.actionManager.add(new WazeActionAddLandmark(landmark));
         }
 
         //
@@ -1268,110 +947,102 @@ function run_magicwand() {
         //
 
         function calcColorDistance(c_pixel, r_pixel) {
-            var xyz = rgbToXyz(c_pixel[0], c_pixel[1], c_pixel[2]);
-            var lab = xyzToLab(xyz[0], xyz[1], xyz[2]);
+            let xyz = rgbToXyz(c_pixel[0], c_pixel[1], c_pixel[2]);
+            const lab = xyzToLab(xyz[0], xyz[1], xyz[2]);
 
             xyz = rgbToXyz(r_pixel[0], r_pixel[1], r_pixel[2]);
-            var target_lab = xyzToLab(xyz[0], xyz[1], xyz[2]);
+            const target_lab = xyzToLab(xyz[0], xyz[1], xyz[2]);
 
             return cie1994(lab, target_lab, false);
 
-//    return Math.sqrt(Math.pow(c_pixel[0] - r_pixel[0], 2) + Math.pow(c_pixel[1] - r_pixel[1], 2) + Math.pow(c_pixel[2] - r_pixel[2], 2));
+            //    return Math.sqrt(Math.pow(c_pixel[0] - r_pixel[0], 2) + Math.pow(c_pixel[1] - r_pixel[1], 2) + Math.pow(c_pixel[2] - r_pixel[2], 2));
         }
 
-// Convert RGB to XYZ
+        // Convert RGB to XYZ
         function rgbToXyz(r, g, b) {
-            var _r = (r / 255);
-            var _g = (g / 255);
-            var _b = (b / 255);
+            let _r = (r / 255);
+            let _g = (g / 255);
+            let _b = (b / 255);
 
             if (_r > 0.04045) {
-                _r = Math.pow(((_r + 0.055) / 1.055), 2.4);
-            }
-            else {
-                _r = _r / 12.92;
+                _r = ((_r + 0.055) / 1.055) ** 2.4;
+            } else {
+                _r /= 12.92;
             }
 
             if (_g > 0.04045) {
-                _g = Math.pow(((_g + 0.055) / 1.055), 2.4);
-            }
-            else {
-                _g = _g / 12.92;
+                _g = ((_g + 0.055) / 1.055) ** 2.4;
+            } else {
+                _g /= 12.92;
             }
 
             if (_b > 0.04045) {
-                _b = Math.pow(((_b + 0.055) / 1.055), 2.4);
-            }
-            else {
-                _b = _b / 12.92;
+                _b = ((_b + 0.055) / 1.055) ** 2.4;
+            } else {
+                _b /= 12.92;
             }
 
-            _r = _r * 100;
-            _g = _g * 100;
-            _b = _b * 100;
+            _r *= 100;
+            _g *= 100;
+            _b *= 100;
 
-            X = _r * 0.4124 + _g * 0.3576 + _b * 0.1805;
-            Y = _r * 0.2126 + _g * 0.7152 + _b * 0.0722;
-            Z = _r * 0.0193 + _g * 0.1192 + _b * 0.9505;
+            const X = _r * 0.4124 + _g * 0.3576 + _b * 0.1805;
+            const Y = _r * 0.2126 + _g * 0.7152 + _b * 0.0722;
+            const Z = _r * 0.0193 + _g * 0.1192 + _b * 0.9505;
 
             return [X, Y, Z];
         }
 
-// Convert XYZ to LAB
+        // Convert XYZ to LAB
         function xyzToLab(x, y, z) {
-            var ref_X = 95.047;
-            var ref_Y = 100.000;
-            var ref_Z = 108.883;
+            const ref_X = 95.047;
+            const ref_Y = 100.000;
+            const ref_Z = 108.883;
 
-            var _X = x / ref_X;
-            var _Y = y / ref_Y;
-            var _Z = z / ref_Z;
+            let _X = x / ref_X;
+            let _Y = y / ref_Y;
+            let _Z = z / ref_Z;
 
             if (_X > 0.008856) {
-                _X = Math.pow(_X, (1 / 3));
-            }
-            else {
+                _X **= (1 / 3);
+            } else {
                 _X = (7.787 * _X) + (16 / 116);
             }
 
             if (_Y > 0.008856) {
-                _Y = Math.pow(_Y, (1 / 3));
-            }
-            else {
+                _Y **= (1 / 3);
+            } else {
                 _Y = (7.787 * _Y) + (16 / 116);
             }
 
             if (_Z > 0.008856) {
-                _Z = Math.pow(_Z, (1 / 3));
-            }
-            else {
+                _Z **= (1 / 3);
+            } else {
                 _Z = (7.787 * _Z) + (16 / 116);
             }
 
-            var CIE_L = (116 * _Y) - 16;
-            var CIE_a = 500 * (_X - _Y);
-            var CIE_b = 200 * (_Y - _Z);
+            const CIE_L = (116 * _Y) - 16;
+            const CIE_a = 500 * (_X - _Y);
+            const CIE_b = 200 * (_Y - _Z);
 
             return [CIE_L, CIE_a, CIE_b];
         }
 
         function getLocation(href) {
-            var l = document.createElement("a");
+            const l = document.createElement('a');
             l.href = href;
             return l;
         }
 
-// Finally, use cie1994 to get delta-e using LAB
+        // Finally, use cie1994 to get delta-e using LAB
         function cie1994(x, y, isTextiles) {
-            var x = {l: x[0], a: x[1], b: x[2]};
-            var y = {l: y[0], a: y[1], b: y[2]};
-            labx = x;
-            laby = y;
-            var k2;
-            var k1;
-            var kl;
-            var kh = 1;
-            var kc = 1;
+            x = { l: x[0], a: x[1], b: x[2] };
+            y = { l: y[0], a: y[1], b: y[2] };
+            let k2;
+            let k1;
+            let kl;
+            const kh = 1;
+            const kc = 1;
             if (isTextiles) {
                 k2 = 0.014;
                 k1 = 0.048;
@@ -1382,34 +1053,35 @@ function run_magicwand() {
                 kl = 1;
             }
 
-            var c1 = Math.sqrt(x.a * x.a + x.b * x.b);
-            var c2 = Math.sqrt(y.a * y.a + y.b * y.b);
+            const c1 = Math.sqrt(x.a * x.a + x.b * x.b);
+            const c2 = Math.sqrt(y.a * y.a + y.b * y.b);
 
-            var sh = 1 + k2 * c1;
-            var sc = 1 + k1 * c1;
-            var sl = 1;
+            const sh = 1 + k2 * c1;
+            const sc = 1 + k1 * c1;
+            const sl = 1;
 
-            var da = x.a - y.a;
-            var db = x.b - y.b;
-            var dc = c1 - c2;
+            const da = x.a - y.a;
+            const db = x.b - y.b;
+            const dc = c1 - c2;
 
-            var dl = x.l - y.l;
-            var dh = Math.sqrt(da * da + db * db - dc * dc);
+            const dl = x.l - y.l;
+            const dh = Math.sqrt(da * da + db * db - dc * dc);
 
-            return Math.sqrt(Math.pow((dl / (kl * sl)), 2) + Math.pow((dc / (kc * sc)), 2) + Math.pow((dh / (kh * sh)), 2));
+            return Math.sqrt((dl / (kl * sl)) ** 2 + (dc / (kc * sc)) ** 2 + (dh / (kh * sh)) ** 2);
         }
 
         // intersect.js
         function ccw(x1, y1, x2, y2, x3, y3) {
-            var cw = ((y3 - y1) * (x2 - x1)) - ((y2 - y1) * (x3 - x1));
-            return cw > 0 ? true : cw < 0 ? false : true; // colinear
+            const cw = ((y3 - y1) * (x2 - x1)) - ((y2 - y1) * (x3 - x1));
+            return cw > 0 ? true : !(cw < 0); // colinear
         }
 
         function intersect(seg1, seg2) {
-          var x1 = seg1[0][0], y1 = seg1[0][1],
-              x2 = seg1[1][0], y2 = seg1[1][1],
-              x3 = seg2[0][0], y3 = seg2[0][1],
-              x4 = seg2[1][0], y4 = seg2[1][1];
+            const x1 = seg1[0][0]; const y1 = seg1[0][1];
+            const x2 = seg1[1][0]; const y2 = seg1[1][1];
+            const x3 = seg2[0][0]; const y3 = seg2[0][1];
+            const x4 = seg2[1][0]; const
+                y4 = seg2[1][1];
 
             return ccw(x1, y1, x3, y3, x4, y4) !== ccw(x2, y2, x3, y3, x4, y4) && ccw(x1, y1, x2, y2, x3, y3) !== ccw(x1, y1, x2, y2, x4, y4);
         }
@@ -1419,10 +1091,10 @@ function run_magicwand() {
             this._cells = [];
             this._cellSize = cellSize;
 
-            points.forEach(function(point) {
-                var cellXY = this.point2CellXY(point),
-                    x = cellXY[0],
-                    y = cellXY[1];
+            points.forEach(function gridPoint(point) {
+                const cellXY = this.point2CellXY(point);
+                const x = cellXY[0];
+                const y = cellXY[1];
                 if (this._cells[x] === undefined) {
                     this._cells[x] = [];
                 }
@@ -1434,17 +1106,17 @@ function run_magicwand() {
         }
 
         Grid.prototype = {
-            cellPoints: function(x, y) { // (Number, Number) -> Array
+            cellPoints(x, y) { // (Number, Number) -> Array
                 return (this._cells[x] !== undefined && this._cells[x][y] !== undefined) ? this._cells[x][y] : [];
             },
 
-            rangePoints: function(bbox) { // (Array) -> Array
-                var tlCellXY = this.point2CellXY([bbox[0], bbox[1]]),
-                    brCellXY = this.point2CellXY([bbox[2], bbox[3]]),
-                    points = [];
+            rangePoints(bbox) { // (Array) -> Array
+                const tlCellXY = this.point2CellXY([bbox[0], bbox[1]]);
+                const brCellXY = this.point2CellXY([bbox[2], bbox[3]]);
+                let points = [];
 
-                for (var x = tlCellXY[0]; x <= brCellXY[0]; x++) {
-                    for (var y = tlCellXY[1]; y <= brCellXY[1]; y++) {
+                for (let x = tlCellXY[0]; x <= brCellXY[0]; x++) {
+                    for (let y = tlCellXY[1]; y <= brCellXY[1]; y++) {
                         points = points.concat(this.cellPoints(x, y));
                     }
                 }
@@ -1452,12 +1124,12 @@ function run_magicwand() {
                 return points;
             },
 
-            removePoint: function(point) { // (Array) -> Array
-                var cellXY = this.point2CellXY(point),
-                    cell = this._cells[cellXY[0]][cellXY[1]],
-                    pointIdxInCell;
+            removePoint(point) { // (Array) -> Array
+                const cellXY = this.point2CellXY(point);
+                const cell = this._cells[cellXY[0]][cellXY[1]];
+                let pointIdxInCell;
 
-                for (var i = 0; i < cell.length; i++) {
+                for (let i = 0; i < cell.length; i++) {
                     if (cell[i][0] === point[0] && cell[i][1] === point[1]) {
                         pointIdxInCell = i;
                         break;
@@ -1469,13 +1141,13 @@ function run_magicwand() {
                 return cell;
             },
 
-            point2CellXY: function(point) { // (Array) -> Array
-                var x = parseInt(point[0] / this._cellSize),
-                    y = parseInt(point[1] / this._cellSize);
+            point2CellXY(point) { // (Array) -> Array
+                const x = parseInt(point[0] / this._cellSize, 10);
+                const y = parseInt(point[1] / this._cellSize, 10);
                 return [x, y];
             },
 
-            extendBbox: function(bbox, scaleFactor) { // (Array, Number) -> Array
+            extendBbox(bbox, scaleFactor) { // (Array, Number) -> Array
                 return [
                     bbox[0] - (scaleFactor * this._cellSize),
                     bbox[1] - (scaleFactor * this._cellSize),
@@ -1490,30 +1162,20 @@ function run_magicwand() {
         }
 
         // format.js
-        formatUtil = {
-
-            toXy: function(pointset, format) {
+        const formatUtil = {
+            toXy(pointset, format) {
                 if (format === undefined) {
                     return pointset.slice();
                 }
-                return pointset.map(function(pt) {
-                    /*jslint evil: true */
-                    var _getXY = new Function('pt', 'return [pt' + format[0] + ',' + 'pt' + format[1] + '];');
-                    return _getXY(pt);
-                });
+                return pointset.map(pt => [pt.x, pt.y]);
             },
 
-            fromXy: function(pointset, format) {
+            fromXy(pointset, format) {
                 if (format === undefined) {
                     return pointset.slice();
                 }
-                return pointset.map(function(pt) {
-                    /*jslint evil: true */
-                    var _getObj = new Function('pt', 'var o = {}; o' + format[0] + '= pt[0]; o' + format[1] + '= pt[1]; return o;');
-                    return _getObj(pt);
-                });
+                return pointset.map(pt => ({ x: pt[0], y: pt[1] }));
             }
-
         };
 
         // convex.js
@@ -1522,8 +1184,8 @@ function run_magicwand() {
         }
 
         function _upperTangent(pointset) {
-            var lower = [];
-            for (var l = 0; l < pointset.length; l++) {
+            const lower = [];
+            for (let l = 0; l < pointset.length; l++) {
                 while (lower.length >= 2 && (_cross(lower[lower.length - 2], lower[lower.length - 1], pointset[l]) <= 0)) {
                     lower.pop();
                 }
@@ -1534,9 +1196,9 @@ function run_magicwand() {
         }
 
         function _lowerTangent(pointset) {
-            var reversed = pointset.reverse(),
-                upper = [];
-            for (var u = 0; u < reversed.length; u++) {
+            const reversed = pointset.reverse();
+            const upper = [];
+            for (let u = 0; u < reversed.length; u++) {
                 while (upper.length >= 2 && (_cross(upper[upper.length - 2], upper[upper.length - 1], reversed[u]) <= 0)) {
                     upper.pop();
                 }
@@ -1548,52 +1210,50 @@ function run_magicwand() {
 
         // pointset has to be sorted by X
         function convex(pointset) {
-            var convex,
-                upper = _upperTangent(pointset),
-                lower = _lowerTangent(pointset);
-            convex = lower.concat(upper);
-            convex.push(pointset[0]);
-            return convex;
+            const upper = _upperTangent(pointset);
+            const lower = _lowerTangent(pointset);
+            const result = lower.concat(upper);
+            result.push(pointset[0]);
+            return result;
         }
 
         // hull.js
 
         function _filterDuplicates(pointset) {
-            return pointset.filter(function(el, idx, arr) {
-                var prevEl = arr[idx - 1];
+            return pointset.filter((el, idx, arr) => {
+                const prevEl = arr[idx - 1];
                 return idx === 0 || !(prevEl[0] === el[0] && prevEl[1] === el[1]);
             });
         }
 
         function _sortByX(pointset) {
-            return pointset.sort(function(a, b) {
-                if (a[0] == b[0]) {
+            return pointset.sort((a, b) => {
+                if (a[0] === b[0]) {
                     return a[1] - b[1];
-                } else {
-                    return a[0] - b[0];
                 }
+                return a[0] - b[0];
             });
         }
 
         function _sqLength(a, b) {
-            return Math.pow(b[0] - a[0], 2) + Math.pow(b[1] - a[1], 2);
+            return (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2;
         }
 
         function _cos(o, a, b) {
-            var aShifted = [a[0] - o[0], a[1] - o[1]],
-                bShifted = [b[0] - o[0], b[1] - o[1]],
-                sqALen = _sqLength(o, a),
-                sqBLen = _sqLength(o, b),
-                dot = aShifted[0] * bShifted[0] + aShifted[1] * bShifted[1];
+            const aShifted = [a[0] - o[0], a[1] - o[1]];
+            const bShifted = [b[0] - o[0], b[1] - o[1]];
+            const sqALen = _sqLength(o, a);
+            const sqBLen = _sqLength(o, b);
+            const dot = aShifted[0] * bShifted[0] + aShifted[1] * bShifted[1];
 
             return dot / Math.sqrt(sqALen * sqBLen);
         }
 
         function _intersect(segment, pointset) {
-            for (var i = 0; i < pointset.length - 1; i++) {
-                var seg = [pointset[i], pointset[i + 1]];
-                if (segment[0][0] === seg[0][0] && segment[0][1] === seg[0][1] ||
-                    segment[0][0] === seg[1][0] && segment[0][1] === seg[1][1]) {
+            for (let i = 0; i < pointset.length - 1; i++) {
+                const seg = [pointset[i], pointset[i + 1]];
+                if ((segment[0][0] === seg[0][0] && segment[0][1] === seg[0][1])
+                        || (segment[0][0] === seg[1][0] && segment[0][1] === seg[1][1])) {
                     continue;
                 }
                 if (intersect(segment, seg)) {
@@ -1604,12 +1264,12 @@ function run_magicwand() {
         }
 
         function _occupiedArea(pointset) {
-            var minX = Infinity,
-                minY = Infinity,
-                maxX = -Infinity,
-                maxY = -Infinity;
+            let minX = Infinity;
+            let minY = Infinity;
+            let maxX = -Infinity;
+            let maxY = -Infinity;
 
-            for (var i = pointset.length - 1; i >= 0; i--) {
+            for (let i = pointset.length - 1; i >= 0; i--) {
                 if (pointset[i][0] < minX) {
                     minX = pointset[i][0];
                 }
@@ -1626,7 +1286,7 @@ function run_magicwand() {
 
             return [
                 maxX - minX, // width
-                maxY - minY  // height
+                maxY - minY // height
             ];
         }
 
@@ -1635,24 +1295,26 @@ function run_magicwand() {
                 Math.min(edge[0][0], edge[1][0]), // left
                 Math.min(edge[0][1], edge[1][1]), // top
                 Math.max(edge[0][0], edge[1][0]), // right
-                Math.max(edge[0][1], edge[1][1])  // bottom
+                Math.max(edge[0][1], edge[1][1]) // bottom
             ];
         }
 
-        function _midPoint(edge, innerPoints, convex) {
-            var point = null,
-                angle1Cos = MAX_CONCAVE_ANGLE_COS,
-                angle2Cos = MAX_CONCAVE_ANGLE_COS,
-                a1Cos, a2Cos;
+        let MAX_CONCAVE_ANGLE_COS; // angle = 90 deg
+        let MAX_SEARCH_BBOX_SIZE_PERCENT;
+        function _midPoint(edge, innerPoints, convex1) {
+            let point = null;
+            let angle1Cos = MAX_CONCAVE_ANGLE_COS;
+            let angle2Cos = MAX_CONCAVE_ANGLE_COS;
+            let a1Cos; let
+                a2Cos;
 
-            for (var i = 0; i < innerPoints.length; i++) {
+            for (let i = 0; i < innerPoints.length; i++) {
                 a1Cos = _cos(edge[0], edge[1], innerPoints[i]);
                 a2Cos = _cos(edge[1], edge[0], innerPoints[i]);
 
-                if (a1Cos > angle1Cos && a2Cos > angle2Cos &&
-                    !_intersect([edge[0], innerPoints[i]], convex) &&
-                    !_intersect([edge[1], innerPoints[i]], convex)) {
-
+                if (a1Cos > angle1Cos && a2Cos > angle2Cos
+                    && !_intersect([edge[0], innerPoints[i]], convex1)
+                    && !_intersect([edge[1], innerPoints[i]], convex1)) {
                     angle1Cos = a1Cos;
                     angle2Cos = a2Cos;
                     point = innerPoints[i];
@@ -1662,90 +1324,85 @@ function run_magicwand() {
             return point;
         }
 
-        function _concave(convex, maxSqEdgeLen, maxSearchArea, grid, edgeSkipList) {
-            var edge,
-                keyInSkipList,
-                scaleFactor,
-                midPoint,
-                bBoxAround,
-                bBoxWidth,
-                bBoxHeight,
-                midPointInserted = false;
+        function _concave(convex1, maxSqEdgeLen, maxSearchArea, grid1, edgeSkipList) {
+            let edge;
+            let keyInSkipList;
+            let scaleFactor;
+            let midPoint;
+            let bBoxAround;
+            let bBoxWidth;
+            let bBoxHeight;
+            let midPointInserted = false;
 
-            for (var i = 0; i < convex.length - 1; i++) {
-                edge = [convex[i], convex[i + 1]];
-                keyInSkipList = edge[0].join() + ',' + edge[1].join();
+            for (let i = 0; i < convex1.length - 1; i++) {
+                edge = [convex1[i], convex1[i + 1]];
+                keyInSkipList = `${edge[0].join()},${edge[1].join()}`;
 
-                if (_sqLength(edge[0], edge[1]) < maxSqEdgeLen ||
-                    edgeSkipList[keyInSkipList] === true) { continue; }
+                if (_sqLength(edge[0], edge[1]) < maxSqEdgeLen
+                    || edgeSkipList[keyInSkipList] === true) { continue; }
 
                 scaleFactor = 0;
                 bBoxAround = _bBoxAround(edge);
                 do {
-                    bBoxAround = grid.extendBbox(bBoxAround, scaleFactor);
+                    bBoxAround = grid1.extendBbox(bBoxAround, scaleFactor);
                     bBoxWidth = bBoxAround[2] - bBoxAround[0];
                     bBoxHeight = bBoxAround[3] - bBoxAround[1];
 
-                    midPoint = _midPoint(edge, grid.rangePoints(bBoxAround), convex);
+                    midPoint = _midPoint(edge, grid1.rangePoints(bBoxAround), convex1);
                     scaleFactor++;
-                }  while (midPoint === null && (maxSearchArea[0] > bBoxWidth || maxSearchArea[1] > bBoxHeight));
+                } while (midPoint === null && (maxSearchArea[0] > bBoxWidth || maxSearchArea[1] > bBoxHeight));
 
                 if (bBoxWidth >= maxSearchArea[0] && bBoxHeight >= maxSearchArea[1]) {
                     edgeSkipList[keyInSkipList] = true;
                 }
 
                 if (midPoint !== null) {
-                    convex.splice(i + 1, 0, midPoint);
-                    grid.removePoint(midPoint);
+                    convex1.splice(i + 1, 0, midPoint);
+                    grid1.removePoint(midPoint);
                     midPointInserted = true;
                 }
             }
 
             if (midPointInserted) {
-                return _concave(convex, maxSqEdgeLen, maxSearchArea, grid, edgeSkipList);
+                return _concave(convex1, maxSqEdgeLen, maxSearchArea, grid1, edgeSkipList);
             }
 
-            return convex;
+            return convex1;
         }
 
         function hull(pointset, concavity, format) {
-            var convex1,
-                concave,
-                innerPoints,
-                occupiedArea,
-                maxSearchArea,
-                cellSize,
-                points,
-                maxEdgeLen = concavity || 20;
+            const maxEdgeLen = concavity || 20;
 
             if (pointset.length < 4) {
                 return pointset.slice();
             }
 
-            points = _filterDuplicates(_sortByX(formatUtil.toXy(pointset, format)));
+            const points = _filterDuplicates(_sortByX(formatUtil.toXy(pointset, format)));
 
-            occupiedArea = _occupiedArea(points);
-            maxSearchArea = [
+            const occupiedArea = _occupiedArea(points);
+            const maxSearchArea = [
                 occupiedArea[0] * MAX_SEARCH_BBOX_SIZE_PERCENT,
                 occupiedArea[1] * MAX_SEARCH_BBOX_SIZE_PERCENT
             ];
 
-            convex1 = convex(points);
-            innerPoints = points.filter(function(pt) {
-                return convex1.indexOf(pt) < 0;
-            });
+            const convex1 = convex(points);
+            const innerPoints = points.filter(pt => convex1.indexOf(pt) < 0);
 
-            cellSize = Math.ceil(1 / (points.length / (occupiedArea[0] * occupiedArea[1])));
+            const cellSize = Math.ceil(1 / (points.length / (occupiedArea[0] * occupiedArea[1])));
 
-            concave = _concave(
-                convex1, Math.pow(maxEdgeLen, 2),
-                maxSearchArea, grid(innerPoints, cellSize), {});
+            const concave = _concave(
+                convex1,
+                maxEdgeLen ** 2,
+                maxSearchArea,
+                grid(innerPoints, cellSize),
+                {}
+            );
 
             return formatUtil.fromXy(concave, format);
         }
 
-        var MAX_CONCAVE_ANGLE_COS = Math.cos(90 / (180 / Math.PI)); // angle = 90 deg
-        var MAX_SEARCH_BBOX_SIZE_PERCENT = 0.6;
+        MAX_CONCAVE_ANGLE_COS = Math.cos(90 / (180 / Math.PI)); // angle = 90 deg
+        MAX_SEARCH_BBOX_SIZE_PERCENT = 0.6;
     }
 
     // Point class
@@ -1753,335 +1410,88 @@ function run_magicwand() {
         this.x = x;
         this.y = y;
 
-        this.toString = function () {
-            return "x: " + x + ", y: " + y;
+        this.toString = function toString() {
+            return `x: ${x}, y: ${y}`;
         };
-        this.rotateRight = function (p1, p2) {
+        this.rotateRight = function rotateRight(p1, p2) {
             // cross product, + is counterclockwise, - is clockwise
             return ((p2.x * y - p2.y * x) - (p1.x * y - p1.y * x) + (p1.x * p2.y - p1.y * p2.x)) < 0;
         };
     }
 
-    Point.prototype.add = function(v){
+    Point.prototype.add = function add(v) {
         return new Point(this.x + v.x, this.y + v.y);
     };
-    Point.prototype.clone = function(){
+    Point.prototype.clone = function clone() {
         return new Point(this.x, this.y);
     };
-    Point.prototype.degreesTo = function(v){
-        var dx = this.x - v.x;
-        var dy = this.y - v.y;
-        var angle = Math.atan2(dy, dx); // radians
+    Point.prototype.degreesTo = function degreesTo(v) {
+        const dx = this.x - v.x;
+        const dy = this.y - v.y;
+        const angle = Math.atan2(dy, dx); // radians
         return angle * (180 / Math.PI); // degrees
     };
-    Point.prototype.distance = function(v){
-        var x = this.x - v.x;
-        var y = this.y - v.y;
+    Point.prototype.distance = function distance(v) {
+        const x = this.x - v.x;
+        const y = this.y - v.y;
         return Math.sqrt(x * x + y * y);
     };
-    Point.prototype.equals = function(toCompare){
-        return this.x == toCompare.x && this.y == toCompare.y;
+    Point.prototype.equals = function equals(toCompare) {
+        return this.x === toCompare.x && this.y === toCompare.y;
     };
-    Point.prototype.interpolate = function(v, f){
+    Point.prototype.interpolate = function interpolate(v, f) {
         return new Point((this.x + v.x) * f, (this.y + v.y) * f);
     };
-    Point.prototype.length = function(){
+    Point.prototype.length = function length() {
         return Math.sqrt(this.x * this.x + this.y * this.y);
     };
-    Point.prototype.normalize = function(thickness){
-        var l = this.length();
-        this.x = this.x / l * thickness;
-        this.y = this.y / l * thickness;
+    Point.prototype.normalize = function normalize(thickness) {
+        const l = this.length();
+        this.x = (this.x / l) * thickness;
+        this.y = (this.y / l) * thickness;
     };
-    Point.prototype.orbit = function(origin, arcWidth, arcHeight, degrees){
-        var radians = degrees * (Math.PI / 180);
+    Point.prototype.orbit = function orbit(origin, arcWidth, arcHeight, degrees) {
+        const radians = degrees * (Math.PI / 180);
         this.x = origin.x + arcWidth * Math.cos(radians);
         this.y = origin.y + arcHeight * Math.sin(radians);
     };
-    Point.prototype.offset = function(dx, dy){
+    Point.prototype.offset = function offset(dx, dy) {
         this.x += dx;
         this.y += dy;
     };
-    Point.prototype.subtract = function(v){
+    Point.prototype.subtract = function subtract(v) {
         return new Point(this.x - v.x, this.y - v.y);
     };
-    Point.prototype.toString = function(){
-        return "(x=" + this.x + ", y=" + this.y + ")";
+    Point.prototype.toString = function toString() {
+        return `(x=${this.x}, y=${this.y})`;
     };
 
-    Point.interpolate = function(pt1, pt2, f){
+    Point.interpolate = function interpolate(pt1, pt2, f) {
         return new Point((pt1.x + pt2.x) * f, (pt1.y + pt2.y) * f);
     };
-    Point.polar = function(len, angle){
+    Point.polar = function polar(len, angle) {
         return new Point(len * Math.cos(angle), len * Math.sin(angle));
     };
-    Point.distance = function(pt1, pt2){
-        var x = pt1.x - pt2.x;
-        var y = pt1.y - pt2.y;
+    Point.distance = function distance(pt1, pt2) {
+        const x = pt1.x - pt2.x;
+        const y = pt1.y - pt2.y;
         return Math.sqrt(x * x + y * y);
     };
 
-    var onVertexDrag = function (dragged_node) {
-        window.wme_magicwand_helpers.isDragging = true;
-        window.wme_magicwand_helpers.draggedNode = dragged_node;
-
-        if (window.event.shiftKey && window.wme_magicwand_helpers.isDragging) {
-            startOrthogonalHelper(dragged_node);
-        }
-    };
-
-    var onVertexDragComplete = function () {
-        window.wme_magicwand_helpers.isDragging = false;
-        window.wme_magicwand_helpers.draggedNode = null;
-        window.wme_magicwand_helpers.modifiedFeatureVertices = null;
-        window.wme_magicwand_helpers.modifiedFeatureVirtualVertices = null;
-        stopOrthogonalHelper();
-    };
-
-    var onKeyDown = function () {
-        if (getElId('_cMagicWandStraightHelper').checked && window.event.keyCode === 16 && window.wme_magicwand_helpers.isDragging) {
-            startOrthogonalHelper();
-        }
-    };
-
-    var onKeyUp = function () {
-        // Shift key
-        if (getElId('_cMagicWandStraightHelper').checked && window.event.keyCode === 16) {
-            stopOrthogonalHelper();
-        }
-    };
-
-    var startOrthogonalHelper = function () {
-        var dragged_node = window.wme_magicwand_helpers.draggedNode;
-
-        var components = window.wme_magicwand_helpers.modifiedFeatureVertices;
-        var indexOf = null;
-
-        // If dragged node is a real node
-        for (var i = 0; i < components.length; i++) {
-            if (components[i] === dragged_node) {
-                indexOf = i;
-                break;
+    function waitForReady() {
+        return new Promise(resolve => {
+            if (typeof W === 'object' && W.userscripts?.state.isReady) {
+                resolve();
+            } else {
+                document.addEventListener('wme-ready', resolve, { once: true });
             }
-        }
-
-        var prevPointIndex, nextPointIndex;
-
-        // debugger;
-
-        // Maybe we're dragging a new node?
-        if (indexOf === null) {
-            for (i = 0; i < window.wme_magicwand_helpers.modifiedFeatureVirtualVertices.length; i++) {
-                if (window.wme_magicwand_helpers.modifiedFeatureVirtualVertices[i] === dragged_node) {
-                    indexOf = i;
-                    break;
-                }
-            }
-
-            if (indexOf !== null) {
-                prevPointIndex = indexOf;
-                nextPointIndex = indexOf < components.length - 1 ? indexOf + 1 : 0;
-            }
-        } else {
-            prevPointIndex = indexOf > 0 ? indexOf - 1 : components.length - 1;
-            nextPointIndex = indexOf < components.length - 1 ? indexOf + 1 : 0;
-        }
-
-        if (indexOf === null) {
-            console.log('Now that is strange, dragged node not found in vertices');
-            return;
-        }
-
-        var centerPoint = new OpenLayers.Geometry.Point((components[nextPointIndex].geometry.x + components[prevPointIndex].geometry.x) / 2, (components[nextPointIndex].geometry.y + components[prevPointIndex].geometry.y) / 2);
-        var radius = Math.sqrt(Math.pow(components[nextPointIndex].geometry.x - components[prevPointIndex].geometry.x, 2) + Math.pow(components[nextPointIndex].geometry.y - components[prevPointIndex].geometry.y, 2)) / 2;
-
-        // Create helper layer and snapping control
-        var helperLayer = new OpenLayers.Layer.Vector('WMEMagicwand_Helper');
-        W.map.addLayer(helperLayer);
-
-        var snap = new OpenLayers.Control.Snapping({
-            layer: W.map.landmarkLayer,
-            targets: [{
-                layer: helperLayer,
-                tolerance: 25
-            }]
         });
-        snap.activate();
+    }
 
-        helperLayer.addFeatures(new OpenLayers.Feature.Vector(OpenLayers.Geometry.Polygon.createRegularPolygon(centerPoint, radius, 500, 0)));
+    async function bootstrap() {
+        await waitForReady();
+        initialiseMagicWand();
+    }
 
-        window.wme_magicwand_helpers.snap = snap;
-        window.wme_magicwand_helpers.layer = helperLayer;
-    };
-
-    var stopOrthogonalHelper = function () {
-        var helpers = window.wme_magicwand_helpers;
-        if (!helpers.layer || !helpers.snap) {
-            return;
-        }
-
-        var layers = W.map.getLayersByName('WMEMagicwand_Helper');
-        for (var i = 0; i < layers.length; i++) {
-            var l = layers[i];
-
-            l.removeAllFeatures();
-            W.map.removeLayer(l);
-            l.destroy();
-        }
-
-        helpers.snap.deactivate();
-        helpers.snap.destroy();
-
-        helpers.snap = null;
-        helpers.layer = null;
-    };
-
-    /* engage! =================================================================== */
-    bootstraMagicWand();
-}
-
-/* end ======================================================================= */
-
-// ############################################################################################################################################################
-//
-// dummyd2's require() patch, modified to perform native require() detection for beta compatibility...
-//
-//{
-// if(typeof require === "undefined")
-// {
-//    var WMEAPI = {};
-//    WMEAPI.scripts = document.getElementsByTagName('script');
-//    WMEAPI.url=null;
-//    for (var i=0;i<WMEAPI.scripts.length;i++)
-//    {
-//       if (WMEAPI.scripts[i].src.indexOf('/assets-editor/js/app')!=-1)
-//       {
-//          WMEAPI.url=WMEAPI.scripts[i].src;
-//          break;
-//       }
-//    }
-//    if (WMEAPI.url==null)
-//    {
-//       throw new Error("WME Hack: can't detect WME main JS");
-//    }
-//    WMEAPI.require=function (e)
-//    {
-//       if (WMEAPI.require.define.modules.hasOwnProperty(e))
-//       {
-//          return WMEAPI.require.define.modules[e];
-//       }
-//       else
-//       {
-//          console.error('Require failed on ' + e, WMEAPI.require.define.modules);
-//       }
-//       return null;
-//    };
-//    WMEAPI.require.define=function (m)
-//    {
-//       if (WMEAPI.require.define.hasOwnProperty('modules') === false)
-//       {
-//          WMEAPI.require.define.modules={};
-//       }
-//       for (var p in m)
-//       {
-//          WMEAPI.require.define.modules[p]=m[p];
-//       }
-//    };
-//    WMEAPI.tmp = window.webpackJsonp;
-//    WMEAPI.t = function (n)
-//    {
-//       if (WMEAPI.s[n])
-//       {
-//          return WMEAPI.s[n].exports;
-//       }
-//       var r = WMEAPI.s[n] =
-//       {
-//          exports: {},
-//          id: n,
-//          loaded: !1
-//       };
-//       return WMEAPI.e[n].call(r.exports, r, r.exports, WMEAPI.t), r.loaded = !0, r.exports;
-//    };
-//    WMEAPI.e=[];
-//    window.webpackJsonp = function(a, i)
-//    {
-//       var api={};
-//       for (var o, d, u = 0, l = []; u < a.length; u++)
-//       {
-//          d = a[u], WMEAPI.r[d] && l.push.apply(l, WMEAPI.r[d]), WMEAPI.r[d] = 0;
-//       }
-//       var unknownCount=0;
-//       var classname, funcStr;
-//       for (o in i)
-//       {
-//          WMEAPI.e[o] = i[o];
-//          funcStr = i[o].toString();
-//          classname = funcStr.match(/CLASS_NAME:\"([^\"]*)\"/);
-//          if (classname)
-//          {
-//             api[classname[1].replace(/\./g,'/').replace(/^W\//, 'Waze/')]={index: o, func: WMEAPI.e[o]};
-//          }
-//          else
-//          {
-//             api['Waze/Unknown/' + unknownCount]={index: o, func: WMEAPI.e[o]};
-//             unknownCount++;
-//          }
-//       }
-//       for (; l.length;)
-//       {
-//          l.shift().call(null, WMEAPI.t);
-//       }
-//       WMEAPI.s[0] = 0;
-//       var module={};
-//       var apiFuncName;
-//       unknownCount=0;
-//       for (o in i)
-//       {
-//          funcStr = i[o].toString();
-//          classname = funcStr.match(/CLASS_NAME:\"([^\"]*)\"/);
-//          if (classname)
-//          {
-//             module={};
-//             apiFuncName = classname[1].replace(/\./g,'/').replace(/^W\//, 'Waze/');
-//             module[apiFuncName]=WMEAPI.t(api[apiFuncName].index);
-//             WMEAPI.require.define(module);
-//          }
-//          else
-//          {
-//             var matches = funcStr.match(/SEGMENT:"segment",/);
-//             if (matches)
-//             {
-//                module={};
-//                apiFuncName='Waze/Model/ObjectType';
-//                module[apiFuncName]=WMEAPI.t(api['Waze/Unknown/' + unknownCount].index);
-//                WMEAPI.require.define(module);
-//             }
-//             unknownCount++;
-//          }
-//       }
-//       window.webpackJsonp=WMEAPI.tmp;
-//       window.require=WMEAPI.require;
-//       setTimeout(initWmeMagicWand(), 500);
-//    };
-//    WMEAPI.s = {};
-//    WMEAPI.r = {0: 0};
-//    WMEAPI.WMEHACK_Injected_script = document.createElement("script");
-//    WMEAPI.WMEHACK_Injected_script.setAttribute("type", "application/javascript");
-//    WMEAPI.WMEHACK_Injected_script.src = WMEAPI.url;
-//    document.body.appendChild(WMEAPI.WMEHACK_Injected_script);
-// }
-// else
-// {
-//     initWmeMagicWand();
-// }
-//}
-//
-// end of dummyd2's require() patch
-//
-
-function initWmeMagicWand() {
-    window.run_magicwand = run_magicwand;
-    run_magicwand();
-}
-
-W?.userscripts?.state?.isReady ? initWmeMagicWand() : document.addEventListener("wme-ready", initWmeMagicWand, { once: true });
+    bootstrap();
+})();
