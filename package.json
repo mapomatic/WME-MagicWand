@@ -1,0 +1,30 @@
+{
+    "name": "wme-magicwand",
+    "devDependencies": {
+        "@turf/turf": "^7.2.0",
+        "@types/jquery": "^3.5.32",
+        "@types/proj4": "^2.5.6",
+        "@types/tampermonkey": "^5.0.4",
+        "typescript": "^5.8.2",
+        "wme-sdk-typings": "https://web-assets.waze.com/wme_sdk_docs/beta/latest/wme-sdk-typings.tgz"
+    },
+    "version": "1.0.0",
+    "description": "",
+    "main": "src/magicwand.user.ts",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "type": "module",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/karlsosha/WME-MagicWand.git"
+    },
+    "private": true,
+    "dependencies": {
+        "@types/i18n": "^0.13.12",
+        "i18n": "^0.15.1",
+        "jquery": "^3.7.1",
+        "prettier": "^3.5.3",
+        "turf": "^3.0.14"
+    }
+}
