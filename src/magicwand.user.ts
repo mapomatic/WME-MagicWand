@@ -8,6 +8,7 @@
 // @grant               none
 // @require             https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js
 // @require             https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.15.0/proj4.js
+// @require             https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
 // @license             MIT
 // @copyright           2018 Vadim Istratov <wpoi@ya.ru>
 // ==/UserScript==
@@ -30,10 +31,11 @@
 
 /* global W */
 
-import * as turf from "@turf/turf";
-import type { Position } from "geojson";
-import type { Venue, Selection, WmeSDK } from "wme-sdk-typings";
-import proj4 from '@types/proj4';
+// import * as turf from "@turf/turf";
+// import type { Position } from "geojson";
+// import type { Venue, Selection, WmeSDK, VenueCategory, VenueCategoryId } from "wme-sdk-typings";
+// import proj4 from "proj4";
+// import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
 
 let sdk: WmeSDK;
 window.SDK_INITIALIZED.then(() => {
@@ -50,8 +52,23 @@ window.SDK_INITIALIZED.then(() => {
 });
 
 function magicwand() {
+    if (!WazeWrap.Ready) {
+        setTimeout(() => {
+            magicwand();
+        }, 100);
+        return;
+    }
 
     const wmelmw_version = GM_info.script.version;
+    interface MWOptions {
+        _sMagicWandLandmark: string[],
+        _cMagicWandSimilarity: boolean,
+        _cMagicWandSampling: boolean,
+        _cMagicWandAngleThreshold: boolean,
+        lastSaveAction: number
+    };
+
+    let MWSettings: MWOptions;
 
     window.wme_magic_wand_debug = false;
     window.wme_magic_wand_profile = false;
@@ -74,13 +91,13 @@ function magicwand() {
         return a;
     }
 
-    function getElId(node: string) : HTMLElement | null {
+    function getElId(node: string): HTMLElement | null {
         return document.getElementById(node);
     }
 
     /* =========================================================================== */
 
-    function initialiseMagicWand() {
+    async function initialiseMagicWand() {
         const userInfo = getElId("user-info");
         const userTabs = getElId("user-tabs");
 
@@ -147,12 +164,19 @@ function magicwand() {
         newtab.innerHTML = '<a href="#sidepanel-magicwand" data-toggle="tab">MagicWand</a>';
         navTabs.appendChild(newtab);
 
-        addon.id = "sidepanel-magicwand";
-        addon.className = "tab-pane";
-        tabContent.appendChild(addon);
-
+        // addon.id = "sidepanel-magicwand";
+        // addon.className = "tab-pane";
+        // tabContent.appendChild(addon);
+        sdk.Sidebar.registerScriptTab().then((r) => {
+            r.tabLabel.innerHTML = "MagicWand";
+            r.tabPane.innerHTML = addon.innerHTML;
+            loadWMEMagicWandSettings().then(() => {
+            });
+        });
+    
+    
         populateLandmarks();
-        loadWMEMagicWandSettings();
+        await loadWMEMagicWandSettings();
 
         // UI listeners
         $("#_bMagicWandProcessClick").click(switchMagicWandStatus);
@@ -161,37 +185,53 @@ function magicwand() {
         window.addEventListener("beforeunload", saveWMEMagicWandOptions, false);
 
         // Hotkeys
-        registerKeyShortcut("WMEMagicWand_HighlightLandmark", "Highlight Landmarks", highlightLandmarks, {
-            "C+k": "WMEMagicWand_HighlightLandmark",
-        });
+        registerKeyShortcut("WMEMagicWand_HighlightLandmark", "Highlight Landmarks", highlightLandmarks, "C+k");
 
         // Start extension
         WMELandmarkMagicWand();
     }
 
-    function loadWMEMagicWandSettings() {
-        if (localStorage.WMEMagicWandScript) {
-            console.log("WME MagicWand: loading options");
-            const options = JSON.parse(localStorage.WMEMagicWandScript);
-
-            for (let i = 0; i < getElId("_sMagicWandLandmark")?.options.length; i++) {
-                if (getElId("_sMagicWandLandmark")?.options[i].value === options[2]) {
-                    getElId("_sMagicWandLandmark")?.options[i].selected = true;
-                    break;
-                }
-            }
-
-            getElId("_cMagicWandSimilarity").value = typeof options[3] !== "undefined" ? options[3] : 9;
-            // getElId('_cMagicWandSimplification').value = typeof options[4] !== 'undefined' ? options[4] : 4;
-            getElId("_cMagicWandSampling").value = typeof options[5] !== "undefined" ? options[5] : 3;
-            getElId("_cMagicWandAngleThreshold").value = typeof options[6] !== "undefined" ? options[6] : 12;
+    async function loadWMEMagicWandSettings() {
+        console.log("WME MagicWand: loading options");
+        const defaultOptions: MWOptions = {
+            _sMagicWandLandmark: [],
+            _cMagicWandSimilarity: false,
+            _cMagicWandSampling: false,
+            _cMagicWandAngleThreshold: false,
+            lastSaveAction: 0
         }
+        const options: MWOptions | null = JSON.parse(localStorage.getItem("WMEMagicWandScript"));
+        const serverSettings = await WazeWrap.Remote.RetrieveSettings("WMEMagicWandScript");
+        MWSettings = $.extend({}, defaultOptions, options);
+        if (serverSettings && serverSettings.lastSaveAction > MWSettings.lastSaveAction) {
+            $.extend(MWSettings, serverSettings);
+        } else {
+            console.log('MagicWand: local settings are used');
+        }
+
+        for (let i = 0; i < getElId("_sMagicWandLandmark")?.options.length; i++) {
+            if (getElId("_sMagicWandLandmark")?.options[i].value === options[2]) {
+                MWSettings._sMagicWandLandmark = true;
+                break;
+            }
+        }
+
+        getElId("_cMagicWandSimilarity").value = typeof options[3] !== "undefined" ? options[3] : 9;
+        // getElId('_cMagicWandSimplification').value = typeof options[4] !== 'undefined' ? options[4] : 4;
+        getElId("_cMagicWandSampling").value = typeof options[5] !== "undefined" ? options[5] : 3;
+        getElId("_cMagicWandAngleThreshold").value = typeof options[6] !== "undefined" ? options[6] : 12;
     }
 
-    function registerKeyShortcut(action_name, annotation, callback, key_map) {
-        W.accelerators.addAction(action_name, { group: "default" });
-        W.accelerators.events.register(action_name, null, callback);
-        W.accelerators._registerShortcuts(key_map);
+    function registerKeyShortcut(action_name: string, annotation: string, callback: () => void, key_map: string) {
+        sdk.Shortcuts.createShortcut({
+            callback: callback,
+            description: annotation,
+            shortcutId: action_name,
+            shortcutKeys: key_map
+        });
+        // W.accelerators.addAction(action_name, { group: "default" });
+        // W.accelerators.events.register(action_name, null, callback);
+        // W.accelerators._registerShortcuts(key_map);
     }
 
     function saveWMEMagicWandOptions() {
@@ -234,7 +274,12 @@ function magicwand() {
             // const poly = document.getElementById(SelectedLandmark.geometry.id);
             const editingSelection: Selection | null = sdk.Editing.getSelection();
             // check that WME hasn't highlighted this object already
-            if (!editingSelection || mark.state === "Update" || editingSelection.objectType !== "venue" || mark.id !== editingSelection.ids[0]) {
+            if (
+                !editingSelection ||
+                mark.state === "Update" ||
+                editingSelection.objectType !== "venue" ||
+                mark.id !== editingSelection.ids[0]
+            ) {
                 continue;
             }
 
@@ -280,16 +325,96 @@ function magicwand() {
             poly.setAttribute("fill", bg);
         }
     }
+    
+    // Point class
+    class MagicPoint {
+        x: number;
+        y: number;
+        static distance(pt1: MagicPoint, pt2: MagicPoint) {
+            return pt1.distance(pt2);
+        }
+        static interpolate(pt1: MagicPoint, pt2: MagicPoint, f: number) {
+            return pt1.interpolate(pt2, f);
+        }
+        static subtractPoints(pt1: MagicPoint, pt2: MagicPoint) {
+            return pt1.subtract(pt2);
+        }
+        constructor(position: number[]) {
+            if (position.length !== 2) {
+                throw new Error("Logic Error.  Position has to have just X and Y Coordinates");
+            }
+            this.x = position[0];
+            this.y = position[1];
+        }
+        toString() {
+            return `(x=${this.x}, y=${this.y})`;
+        }
+        rotateRight(p1: MagicPoint, p2: MagicPoint): boolean {
+            // cross product, + is counterclockwise, - is clockwise
+            return p2.x * this.y - p2.y * this.x - (p1.x * this.y - p1.y * this.x) + (p1.x * p2.y - p1.y * p2.x) < 0;
+        }
+        add(v: MagicPoint) {
+            return new MagicPoint([this.x + v.x, this.y + v.y]);
+        }
+        clone() {
+            return new MagicPoint([this.x, this.y]);
+        }
+        degreesTo(v: MagicPoint) {
+            const dx = this.x - v.x;
+            const dy = this.y - v.y;
+            const angle = Math.atan2(dy, dx); // radians
+            return angle * (180 / Math.PI); // degrees
+        }
+        distance(v: MagicPoint) {
+            const x = this.x - v.x;
+            const y = this.y - v.y;
+            return Math.sqrt(x * x + y * y);
+        }
+        equals(toCompare: MagicPoint) {
+            return this.x === toCompare.x && this.y === toCompare.y;
+        }
+        interpolate(v: MagicPoint, f: number) {
+            return new MagicPoint([(this.x + v.x) * f, (this.y + v.y) * f]);
+        }
+
+        length() {
+            return Math.sqrt(this.x * this.x + this.y * this.y);
+        }
+        normalize(thickness: number) {
+            const l = this.length();
+            this.x = (this.x / l) * thickness;
+            this.y = (this.y / l) * thickness;
+        }
+        orbit(origin: MagicPoint, arcWidth: number, arcHeight: number, degrees: number) {
+            const radians = degrees * (Math.PI / 180);
+            this.x = origin.x + arcWidth * Math.cos(radians);
+            this.y = origin.y + arcHeight * Math.sin(radians);
+        }
+        offset(dx: number, dy: number) {
+            this.x += dx;
+            this.y += dy;
+        }
+        subtract(v: MagicPoint) {
+            return new MagicPoint([this.x - v.x, this.y - v.y]);
+        }
+        polar(len: number, angle: number) {
+            return new MagicPoint([len * Math.cos(angle), len * Math.sin(angle)]);
+        }
+        toPosition(): GeoJSON.Position {
+            return [this.x, this.y];
+        }
+    }
 
     class OrthogonalizeId {
         threshold = getElId("_cMagicWandAngleThreshold").value; // degrees within right or straight to alter
         lowerThreshold = Math.cos((90 - threshold) * (Math.PI / 180));
         upperThreshold = Math.cos(threshold * (Math.PI / 180));
         way: any;
+        static magicZero: MagicPoint = new MagicPoint([0, 0]);
 
         constructor(way) {
             this.way = way;
-        };
+        }
         action() {
             const nodes = this.way;
             let points = nodes.slice(0, nodes.length - 1).map((n: MagicPoint) => {
@@ -322,13 +447,7 @@ function magicwand() {
 
                 const n: MagicPoint = points[corner.i];
                 n.y = latp2lat(n.y);
-                const pp = proj4
-                
-                
-                n.transform(
-                    new OpenLayers.Projection("EPSG:4326"),
-                    new OpenLayers.Projection("EPSG:900913")
-                );
+                const pp: MagicPoint = new MagicPoint(proj4("EPSG:4326", "EPSG:900913", n.toPosition()));
 
                 const { id } = nodes[corner.i];
                 for (i = 0; i < nodes.length; i++) {
@@ -345,20 +464,20 @@ function magicwand() {
             let best;
             const originalPoints = nodes.slice(0, nodes.length - 1).map((n) => {
                 const t = n.clone();
-                const p = t.transform(new OpenLayers.Projection("EPSG:900913"), new OpenLayers.Projection("EPSG:4326"));
+                const p = new MagicPoint(proj4("EPSG:900913", "EPSG:4326", t));
                 p.y = lat2latp(p.y);
                 return p;
             });
-            score = Infinity;
+            score = Number.POSITIVE_INFINITY;
 
             for (i = 0; i < 1000; i++) {
                 motions = points.map(calcMotion);
                 for (j = 0; j < motions.length; j++) {
-                    const tmp = addPoints(points[j], motions[j]);
+                    const tmp = this.addPoints(points[j], motions[j]);
                     points[j].x = tmp.x;
                     points[j].y = tmp.y;
                 }
-                const newScore = squareness(points);
+                const newScore = this.squareness(points);
                 if (newScore < score) {
                     best = [].concat(points);
                     score = newScore;
@@ -373,12 +492,9 @@ function magicwand() {
             for (i = 0; i < points.length; i++) {
                 // only move the points that actually moved
                 if (originalPoints[i].x !== points[i].x || originalPoints[i].y !== points[i].y) {
-                    const n = points[i];
+                    const n: MagicPoint = points[i];
                     n.y = latp2lat(n.y);
-                    const pp = n.transform(
-                        new OpenLayers.Projection("EPSG:4326"),
-                        new OpenLayers.Projection("EPSG:900913")
-                    );
+                    const pp: MagicPoint = new MagicPoint(proj4("EPSG:4326", "EPSG:900913", n.toPosition()));
 
                     const { id } = nodes[i];
                     for (j = 0; j < nodes.length; j++) {
@@ -394,7 +510,7 @@ function magicwand() {
 
             // remove empty nodes on straight sections
             for (i = 0; i < points.length; i++) {
-                const dotp = normalizedDotProduct(i, points);
+                const dotp = this.normalizedDotProduct(i, points);
                 if (dotp < -1 + epsilon) {
                     const id = nodes[i].id;
                     for (j = 0; j < nodes.length; j++) {
@@ -412,10 +528,10 @@ function magicwand() {
             function calcMotion(b, k, array) {
                 const a = array[(k - 1 + array.length) % array.length];
                 const c = array[(k + 1) % array.length];
-                let p = subtractPoints(a, b);
-                let q = subtractPoints(c, b);
+                let p: MagicPoint = MagicPoint.subtractPoints(a, b);
+                let q: MagicPoint = MagicPoint.subtractPoints(c, b);
 
-                const scale = 2 * Math.min(euclideanDistance(p, { x: 0, y: 0 }), euclideanDistance(q, { x: 0, y: 0 }));
+                const scale = 2 * Math.min(this.euclideanDistance(p, OrthogonalizeId.magicZero, this.euclideanDistance(q, OrthogonalizeId.magicZero)));
                 p = normalizePoint(p, 1.0);
                 q = normalizePoint(q, 1.0);
 
@@ -431,11 +547,11 @@ function magicwand() {
                     corner.dotp = Math.abs(dotp);
                 }
 
-                return normalizePoint(addPoints(p, q), 0.1 * dotp * scale);
+                return normalizePoint(this.addPoints(p, q), 0.1 * dotp * scale);
             }
-        };
-        squareness(points) {
-            return points.reduce((sum, val, i, array) => {
+        }
+        squareness(points : MagicPoint[]) {
+            return points.reduce((sum: number, val: MagicPoint, i: number, array: MagicPoint[]) => {
                 let dotp = this.normalizedDotProduct(i, array);
 
                 dotp = this.filterDotProduct(dotp);
@@ -443,11 +559,11 @@ function magicwand() {
             }, 0);
         }
 
-        normalizedDotProduct(i, points) {
+        normalizedDotProduct(i: number, points: MagicPoint[]) {
             const a = points[(i - 1 + points.length) % points.length];
             const b = points[i];
             const c = points[(i + 1) % points.length];
-            let p = this.subtractPoints(a, b);
+            let p: MagicPoint = this.subtractPoints(a, b);
             let q = this.subtractPoints(c, b);
 
             p = this.normalizePoint(p, 1.0);
@@ -461,13 +577,13 @@ function magicwand() {
         addPoints(a: MagicPoint, b: MagicPoint) {
             return { x: a.x + b.x, y: a.y + b.y };
         }
-        euclideanDistance(a: MagicPoint, b: MagicPoint) {
+        euclideanDistance(a: MagicPoint, b: MagicPoint) : number {
             const x = a.x - b.x;
             const y = a.y - b.y;
             return Math.sqrt(x * x + y * y);
         }
-        normalizePoint(point: MagicPoint, scale: number) {
-            const vector = { x: 0, y: 0 };
+        normalizePoint(point: MagicPoint, scale: number): MagicPoint {
+            const vector: MagicPoint = new MagicPoint([0, 0]);
             const length = Math.sqrt(point.x * point.x + point.y * point.y);
             if (length !== 0) {
                 vector.x = point.x / length;
@@ -495,8 +611,8 @@ function magicwand() {
             });
 
             return this.squareness(points);
-        };
-    };
+        }
+    }
 
     const switchMagicWandStatus = function () {
         window.wme_magic_wand = !window.wme_magic_wand;
@@ -524,29 +640,23 @@ function magicwand() {
     }
 
     function populateLandmarks() {
-        const landmarkTypes = getElId("_sMagicWandLandmark");
-        const translations = window.I18n.translations[window.I18n.currentLocale()].venues.categories;
-
-        let filteredTranslations = Object.keys(translations)
-            .filter((id) => translations.hasOwnProperty(id))
-            .map((id) => ({
-                type_id: id,
-                type_name: translations[id],
-            }));
+        const landmarkTypes: HTMLElement | null = getElId("_sMagicWandLandmark");
+        if(!landmarkTypes) return;
+        let venueCategories: VenueCategory[] = sdk.DataModel.Venues.getAllVenueCategories();
 
         // Sorting by name
-        filteredTranslations = filteredTranslations.sort((a, b) => a.type_name.localeCompare(b.type_name));
+        venueCategories = venueCategories.sort((a: VenueCategory, b: VenueCategory) => a.localizedName.localeCompare(b.localizedName));
 
-        filteredTranslations.forEach((trans) => {
-            const id = trans.type_id;
-            const type = trans.type_name;
+        for(const venCat of venueCategories) {
+            const id: VenueCategoryId = venCat.id;
+            const category = venCat.localizedName;
 
-            const usrOption = document.createElement("option");
-            const usrText = document.createTextNode(type);
-            usrOption.setAttribute("value", id);
+            const usrOption: HTMLOptionElement = document.createElement("option");
+            const usrText: Text = document.createTextNode(category);
+            usrOption.value = id;
             usrOption.appendChild(usrText);
             landmarkTypes.appendChild(usrOption);
-        });
+        };
     }
 
     function lat2latp(lat: number) {
@@ -558,7 +668,6 @@ function magicwand() {
     }
 
     function WMELandmarkMagicWand() {
-
         const MAX_CONCAVE_ANGLE_COS: number = Math.cos(90 / (180 / Math.PI)); // angle = 90 deg
         const MAX_SEARCH_BBOX_SIZE_PERCENT: number = 0.6;
         // const { W } = window;
@@ -580,14 +689,17 @@ function magicwand() {
         let color_sensitivity: number;
         let color_distance;
         let color_algorithm;
-        let landmark_type;
+        let landmark_type: VenueCategory;
         let sampling = 3;
         let waited_for = 0;
         let is_reload_tiles = true;
 
-        sdk.Events.on({eventName: "wme-map-move-end", eventHandler: () => {
-            is_reload_tiles = true;
-        }});
+        sdk.Events.on({
+            eventName: "wme-map-move-end",
+            eventHandler: () => {
+                is_reload_tiles = true;
+            },
+        });
 
         // W.map.events.register("changebaselayer", null, () => {
         //     is_reload_tiles = true;
@@ -946,31 +1058,29 @@ function magicwand() {
             );
         }
 
-        function createLandmark(points /* , simplify */) {
-            const polyPoints = [];
-            let o;
-            let point_lonlat;
+        function createLandmark(points: MagicPoint[] /* , simplify */) {
+            const polyPoints: Position[] = [];
 
             for (let k = 0; k < points.length; k++) {
-                o = points[k];
-                point_lonlat = W.map.getLonLatFromPixel(new OpenLayers.Pixel(o.x, o.y));
-                polyPoints.push([point_lonlat.lon, point_lonlat.lat]);
+                const o = points[k];
+                // point_lonlat = W.map.getLonLatFromPixel(new OpenLayers.Pixel(o.x, o.y));
+                polyPoints.push([o.x, o.y]);
             }
 
             // const LineString = new OpenLayers.Geometry.LineString(polyPoints);
             // if (simplify > 0) {
             //     LineString = LineString.simplify(simplify);
             // }
-            window.turf = turf;
             const polygon = turf.polygon([polyPoints]).geometry;
 
-            const WazefeatureVectorLandmark = require("Waze/Feature/Vector/Landmark");
-            const WazeActionAddLandmark = require("Waze/Action/AddLandmark");
+            sdk.DataModel.Venues.addVenue({landmark_type, polygon });
+            // const WazefeatureVectorLandmark = require("Waze/Feature/Vector/Landmark");
+            // const WazeActionAddLandmark = require("Waze/Action/AddLandmark");
 
-            const landmark = new WazefeatureVectorLandmark({ geoJSONGeometry: polygon });
-            landmark.attributes.categories = [landmark_type];
+            // const landmark = new WazefeatureVectorLandmark({ geoJSONGeometry: polygon });
+            // landmark.attributes.categories = [landmark_type];
 
-            W.model.actionManager.add(new WazeActionAddLandmark(landmark));
+            // W.model.actionManager.add(new WazeActionAddLandmark(landmark));
         }
 
         //
@@ -1025,7 +1135,7 @@ function magicwand() {
         }
 
         // Convert XYZ to LAB
-        function xyzToLab(x: number, y:number, z: number) {
+        function xyzToLab(x: number, y: number, z: number) {
             const ref_X = 95.047;
             const ref_Y = 100.0;
             const ref_Z = 108.883;
@@ -1148,11 +1258,11 @@ function magicwand() {
                 return this._cells[x] !== undefined && this._cells[x][y] !== undefined ? this._cells[x][y] : [];
             },
 
-            rangePoints(bbox:GeoJSON.BBox) {
+            rangePoints(bbox: GeoJSON.BBox) {
                 // (Array) -> Array
                 const tlCellXY = this.point2CellXY([bbox[0], bbox[1]]);
                 const brCellXY = this.point2CellXY([bbox[2], bbox[3]]);
-                let points:  = [];
+                let points = [];
 
                 for (let x = tlCellXY[0]; x <= brCellXY[0]; x++) {
                     for (let y = tlCellXY[1]; y <= brCellXY[1]; y++) {
@@ -1450,80 +1560,6 @@ function magicwand() {
         }
     }
 
-
-    // Point class
-    class MagicPoint {
-        x: number;
-        y: number;
-        static distance(pt1: MagicPoint, pt2: MagicPoint) {
-            return pt1.distance(pt2);
-        };
-        static interpolate(pt1: MagicPoint, pt2: MagicPoint, f: number) {
-            return pt1.interpolate(pt2, f);
-        };
-        constructor(position: number[]) {
-            if(position.length !== 2) {
-                throw new Error("Logic Error.  Position has to have just X and Y Coordinates");
-            }
-            this.x = position[0];
-            this.y = position[1];
-        }
-        toString() {
-            return `(x=${this.x}, y=${this.y})`;
-        }
-        rotateRight(p1: MagicPoint, p2: MagicPoint): boolean {
-            // cross product, + is counterclockwise, - is clockwise
-            return p2.x * this.y - p2.y * this.x - (p1.x * this.y - p1.y * this.x) + (p1.x * p2.y - p1.y * p2.x) < 0;
-        };
-        add(v: MagicPoint) {
-            return new MagicPoint([this.x + v.x, this.y + v.y]);
-        };
-        clone() {return new MagicPoint([this.x, this.y]);    };
-        degreesTo(v: MagicPoint) {
-            const dx = this.x - v.x;
-            const dy = this.y - v.y;
-            const angle = Math.atan2(dy, dx); // radians
-            return angle * (180 / Math.PI); // degrees
-        };
-        distance(v: MagicPoint) {
-            const x = this.x - v.x;
-            const y = this.y - v.y;
-            return Math.sqrt(x * x + y * y);
-        };
-        equals(toCompare: MagicPoint) {
-            return this.x === toCompare.x && this.y === toCompare.y;
-        };
-        interpolate(v: MagicPoint, f: number) {
-            return new MagicPoint([(this.x + v.x) * f, (this.y + v.y) * f]);
-        };
-
-        length() {
-            return Math.sqrt(this.x * this.x + this.y * this.y);
-        };
-        normalize(thickness: number) {
-            const l = this.length();
-            this.x = (this.x / l) * thickness;
-            this.y = (this.y / l) * thickness;
-        };
-        orbit(origin: MagicPoint, arcWidth: number, arcHeight: number, degrees: number) {
-            const radians = degrees * (Math.PI / 180);
-            this.x = origin.x + arcWidth * Math.cos(radians);
-            this.y = origin.y + arcHeight * Math.sin(radians);
-        };
-        offset(dx: number, dy: number) {
-            this.x += dx;
-            this.y += dy;
-        };
-        subtract(v: MagicPoint) {
-            return new MagicPoint([this.x - v.x, this.y - v.y]);
-        };
-        polar(len: number, angle: number) {
-            return new MagicPoint([len * Math.cos(angle), len * Math.sin(angle)]);
-        };
-        toPosition(): GeoJSON.Position {
-            return [this.x, this.y];
-        }
-    }
 
     initialiseMagicWand();
 }
