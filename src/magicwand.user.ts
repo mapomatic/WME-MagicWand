@@ -70,10 +70,10 @@ function magicwand() {
 
     let MWSettings: MWOptions;
 
-    window.wme_magic_wand_debug = false;
-    window.wme_magic_wand_profile = false;
+    let magic_wand_debug = false;
+    let magic_wand_profile = false;
 
-    window.wme_magicwand_helpers = {
+    let wme_magicwand_helpers = {
         isDragging: false,
         draggedNode: null,
         modifiedFeatureControl: null,
@@ -111,8 +111,8 @@ function magicwand() {
 
         console.log("WME MagicWand init");
 
-        window.wme_magic_wand = false;
-        window.wme_magic_wand_process = false;
+        var magic_enabled = false;
+        var magic_wand_process = false;
 
         // add new box to left of the map
         const addon = document.createElement("section");
@@ -641,7 +641,7 @@ function magicwand() {
         let bgColor;
         let status;
         let btnText;
-        if (window.wme_magic_wand) {
+        if (magic_enabled) {
             bgColor = "red";
             btnText = "CLICK TO STOP MAGIC WAND";
             status = "Waiting for click";
@@ -729,159 +729,162 @@ function magicwand() {
         //     is_reload_tiles = true;
         // });
 
-        W.map.events.register("click", null, (e) => {
-            if (!window.wme_magic_wand || window.wme_magic_wand_process) {
-                return;
-            }
-
-            window.wme_magic_wand_process = true;
-            $("#_bMagicWandProcessClick").attr("disabled", "disabled");
-
-            // Get current active layer to process
-            layer = null;
-
-            const visible_layers = W.map.getLayersBy("visibility", true);
-            for (let l = 0; l < visible_layers.length; l++) {
-                if (visible_layers[l].name === "satellite_imagery") {
-                    // (true === visible_layers[l].isBaseLayer) {
-                    layer = visible_layers[l];
-
-                    $("#_sMagicWandUsedLayer").html(layer.name);
-                    break;
+        sdk.Events.on({
+            eventName: "wme-map-mouse-down",
+            eventHandler(payload) {
+                if (!magic_enabled || magic_wand_process) {
+                    return;
                 }
-            }
 
-            if (typeof layer === "undefined") {
-                resetProcessState();
-                alert("Please make of the base layers active (default to Google)");
-                return;
-            }
+                magic_wand_process = true;
+                $("#_bMagicWandProcessClick").attr("disabled", "disabled");
 
-            // simplify_param = parseInt(getElId('_cMagicWandSimplification').value, 10);
-            color_sensitivity = parseInt(getElId("_cMagicWandSimilarity").value, 10);
-            color_distance = parseInt(getElId("_cMagicWandSimilarity").value, 10);
-            color_algorithm = getElId("_rMagicWandColorAlgorithm_lab").checked ? "LAB" : "sensitivity";
-            landmark_type = getElId("_sMagicWandLandmark").options[getElId("_sMagicWandLandmark").selectedIndex].value;
-            sampling = parseInt(getElId("_cMagicWandSampling").value, 10);
+                // Get current active layer to process
+                layer = null;
 
-            pixel = e.xy;
-            const geojsonLatLon = W.map.getLonLatFromPixel(pixel);
-            const pt: GeoJSON.Point = {
-                type: "Point",
-                coordinates: [geojsonLatLon.lon, geojsonLatLon.lat],
-            };
-            const olLatLon = W.userscripts.toOLGeometry(pt);
-            LatLon = { lon: olLatLon.x, lat: olLatLon.y };
+                const is_imagery_enabled: boolean = W.layerSwitcherController.getTogglerState("SATELLITE_IMAGERY");
+                if(is_imagery_enabled) {
+                    $("#_sMagicWandUsedLayer").html("SATELLITE_IMAGERY")
+                }
+                    else {
+                    resetProcessState();
+                    alert("Please make of the base layers active (default to Google)");
+                    return;
+                }
 
-            const tile_size = layer.grid[0][0].size;
+                // simplify_param = parseInt(getElId('_cMagicWandSimplification').value, 10);
+                color_sensitivity = Number.parseInt((getElId("_cMagicWandSimilarity") as HTMLInputElement).value, 10);
+                color_distance = Number.parseInt((getElId("_cMagicWandSimilarity") as HTMLInputElement).value, 10);
+                color_algorithm = getElId("_rMagicWandColorAlgorithm_lab").checked ? "LAB" : "sensitivity";
+                landmark_type =
+                    getElId("_sMagicWandLandmark").options[getElId("_sMagicWandLandmark").selectedIndex].value;
+                sampling = Number.parseInt((getElId("_cMagicWandSampling") as HTMLInputElement).value, 10);
 
-            updateStatus("Creating canvas");
+                pixel = e.xy;
+                const geojsonLatLon = sdk.Map.getLonLatFromPixel(pixel);
+                const pt: GeoJSON.Point = {
+                    type: "Point",
+                    coordinates: [geojsonLatLon.lon, geojsonLatLon.lat],
+                };
+                const olLatLon = W.userscripts.toOLGeometry(pt);
+                LatLon = { lon: olLatLon.x, lat: olLatLon.y };
 
-            if (typeof canvas !== "undefined" && typeof context !== "undefined") {
-                if (is_reload_tiles) {
+                const tile_size = layer.grid[0][0].size;
+
+                updateStatus("Creating canvas");
+
+                if (canvas !== "undefined" && context !== "undefined") {
+                    if (is_reload_tiles) {
+                        canvas.width = tile_size.h * layer.grid[0].length;
+                        canvas.height = tile_size.w * layer.grid.length;
+                        context.clearRect(0, 0, canvas.width, canvas.height);
+                    }
+                } else {
+                    canvas = $("<canvas/>")[0];
                     canvas.width = tile_size.h * layer.grid[0].length;
                     canvas.height = tile_size.w * layer.grid.length;
-                    context.clearRect(0, 0, canvas.width, canvas.height);
+                    context = canvas.getContext("2d");
                 }
-            } else {
-                canvas = $("<canvas/>")[0];
-                canvas.width = tile_size.h * layer.grid[0].length;
-                canvas.height = tile_size.w * layer.grid.length;
-                context = canvas.getContext("2d");
-            }
 
-            if (typeof draw_canvas === "undefined") {
-                draw_canvas = $("<canvas/>")[0];
-            }
-
-            draw_canvas.width = canvas.width;
-            draw_canvas.height = canvas.height;
-
-            total_tiles = layer.grid.length * layer.grid[0].length;
-            waited_for = 0;
-
-            let clientX;
-            let clientY;
-            let offsetX;
-            let offsetY;
-            let imageX;
-            let imageY;
-            let tile;
-            let img;
-            let location;
-
-            updateStatus("Pre-processing tiles");
-
-            for (let tilerow = 0; tilerow < layer.grid.length; tilerow++) {
-                for (let tilei = 0; tilei < layer.grid[tilerow].length; tilei++) {
-                    tile = layer.grid[tilerow][tilei];
-
-                    if (tile.bounds.containsLonLat(LatLon, false)) {
-                        // Click position on div image
-                        clientX = e.pageX;
-                        clientY = e.pageY;
-
-                        offsetX = $(tile.imgDiv).offset().left;
-                        offsetY = $(tile.imgDiv).offset().top;
-
-                        imageX = clientX - offsetX;
-                        imageY = clientY - offsetY;
-
-                        clickCanvasX = tile_size.w * tilei + imageX;
-                        clickCanvasY = tile_size.h * tilerow + imageY;
-
-                        viewOffsetX = pixel.x - clickCanvasX;
-                        viewOffsetY = pixel.y - clickCanvasY;
-                    }
-
-                    // No need to reload tiles
-                    if (
-                        !is_reload_tiles &&
-                        !($("img[data-default_url]").length > 0 && $("img[data-coords]").length > 0)
-                    ) {
-                        continue;
-                    }
-
-                    updateStatus("Loading tiles");
-
-                    // Have to recreate image - image should have crossOrigin attribute set to "anonymous"
-                    img = $("<img/>")[0];
-                    $(img).data("tilei", tilei).data("tilerow", tilerow).attr("crossOrigin", "anonymous");
-
-                    // eslint-disable-next-line no-loop-func
-                    img.onload = function onload() {
-                        const img1 = this;
-                        const tilei1 = $(img1).data("tilei");
-                        const tilerow1 = $(img1).data("tilerow");
-
-                        // Add tile to canvas
-                        context.drawImage(img1, tile_size.w * tilei1, tile_size.h * tilerow1, img1.width, img1.height);
-
-                        total_tiles--;
-                    };
-
-                    img.onerror = function onerror(e1) {
-                        console.log("WME MagicWand: Cannot load tile: ", e1);
-                    };
-
-                    let img_url = tile.url;
-                    // Experimental support for Map Overlays extension
-                    // DO NOT USE FOR EDITS
-                    const alt_img = $(`img[data-default_url="${img_url}"]`);
-                    if (alt_img.length > 0) {
-                        img_url = alt_img[0].src;
-                    }
-
-                    location = getLocation(img_url);
-                    img.src = `${img_url + (typeof location.search === "undefined" || location.search === "" ? "?" : "&")}dummy=wmemagicwand`;
+                if (typeof draw_canvas === "undefined") {
+                    draw_canvas = $("<canvas/>")[0];
                 }
-            }
 
-            if (is_reload_tiles) {
-                waitForLoad();
-            } else {
-                process();
-            }
+                draw_canvas.width = canvas.width;
+                draw_canvas.height = canvas.height;
+
+                total_tiles = layer.grid.length * layer.grid[0].length;
+                waited_for = 0;
+
+                let clientX;
+                let clientY;
+                let offsetX;
+                let offsetY;
+                let imageX;
+                let imageY;
+                let tile;
+                let img;
+                let location;
+
+                updateStatus("Pre-processing tiles");
+
+                for (let tilerow = 0; tilerow < layer.grid.length; tilerow++) {
+                    for (let tilei = 0; tilei < layer.grid[tilerow].length; tilei++) {
+                        tile = layer.grid[tilerow][tilei];
+
+                        if (tile.bounds.containsLonLat(LatLon, false)) {
+                            // Click position on div image
+                            clientX = e.pageX;
+                            clientY = e.pageY;
+
+                            offsetX = $(tile.imgDiv).offset().left;
+                            offsetY = $(tile.imgDiv).offset().top;
+
+                            imageX = clientX - offsetX;
+                            imageY = clientY - offsetY;
+
+                            clickCanvasX = tile_size.w * tilei + imageX;
+                            clickCanvasY = tile_size.h * tilerow + imageY;
+
+                            viewOffsetX = pixel.x - clickCanvasX;
+                            viewOffsetY = pixel.y - clickCanvasY;
+                        }
+
+                        // No need to reload tiles
+                        if (
+                            !is_reload_tiles &&
+                            !($("img[data-default_url]").length > 0 && $("img[data-coords]").length > 0)
+                        ) {
+                            continue;
+                        }
+
+                        updateStatus("Loading tiles");
+
+                        // Have to recreate image - image should have crossOrigin attribute set to "anonymous"
+                        img = $("<img/>")[0];
+                        $(img).data("tilei", tilei).data("tilerow", tilerow).attr("crossOrigin", "anonymous");
+
+                        // eslint-disable-next-line no-loop-func
+                        img.onload = function onload() {
+                            const img1 = this;
+                            const tilei1 = $(img1).data("tilei");
+                            const tilerow1 = $(img1).data("tilerow");
+
+                            // Add tile to canvas
+                            context.drawImage(
+                                img1,
+                                tile_size.w * tilei1,
+                                tile_size.h * tilerow1,
+                                img1.width,
+                                img1.height
+                            );
+
+                            total_tiles--;
+                        };
+
+                        img.onerror = function onerror(e1) {
+                            console.log("WME MagicWand: Cannot load tile: ", e1);
+                        };
+
+                        let img_url = tile.url;
+                        // Experimental support for Map Overlays extension
+                        // DO NOT USE FOR EDITS
+                        const alt_img = $(`img[data-default_url="${img_url}"]`);
+                        if (alt_img.length > 0) {
+                            img_url = alt_img[0].src;
+                        }
+
+                        location = getLocation(img_url);
+                        img.src = `${img_url + (typeof location.search === "undefined" || location.search === "" ? "?" : "&")}dummy=wmemagicwand`;
+                    }
+                }
+
+                if (is_reload_tiles) {
+                    waitForLoad();
+                } else {
+                    process();
+                }
+            },
         });
 
         function waitForLoad() {
