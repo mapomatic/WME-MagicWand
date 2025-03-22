@@ -1,4 +1,3 @@
-"use strict";
 /* eslint-disable */
 // ==UserScript==
 // @name                WME MagicWand
@@ -28,11 +27,9 @@
  * Contributors: justins83, MapOMatic (2023-?)
  */
 /* global W */
-// import * as turf from "@turf/turf";
-// import type { Position } from "geojson";
-// import type { Venue, Selection, WmeSDK, VenueCategory, VenueCategoryId } from "wme-sdk-typings";
-// import proj4 from "proj4";
-// import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
+import * as turf from "@turf/turf";
+import proj4 from "proj4";
+import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
 let sdk;
 window.SDK_INITIALIZED.then(() => {
     if (!window.getWmeSdk) {
@@ -52,8 +49,6 @@ function magicwand() {
         }, 100);
         return;
     }
-    const wmelmw_version = GM_info.script.version;
-    ;
     let MWSettings;
     window.wme_magic_wand_debug = false;
     window.wme_magic_wand_profile = false;
@@ -94,22 +89,36 @@ function magicwand() {
         window.wme_magic_wand_process = false;
         // add new box to left of the map
         const addon = document.createElement("section");
-        addon.innerHTML = `<b>WME Magic Wand</b> v${wmelmw_version}`;
+        addon.innerHTML = `<b>WME Magic Wand</b> v${GM_info.script.version}`;
+        const enableScriptParagraph = document.createElement("p");
+        enableScriptParagraph.style.borderBottom = "2px double grey";
+        enableScriptParagraph.innerHTML = `
+                    <div>
+                        <div class='mw-option-container' style='float:left;'>
+                            <input type=checkbox class='mw-checkbox' id='mw-ScriptEnabled' />
+                            <label class='mw-label' for='mw-ScriptEnabled'>Enable Script<span class='mw-trans-enabled'></span></label>
+                        </div>
+                    </div>
+        `;
+        addon.appendChild(enableScriptParagraph);
         let section = document.createElement("p");
         section.style.paddingTop = "8px";
         section.style.textIndent = "16px";
         section.id = "magicwand_advanced";
         section.innerHTML =
-            "<b>Advanced Editor Options</b><br/>" +
-                '<label>Angle threshold<br/><input type="text" id="_cMagicWandAngleThreshold" name="_cMagicWandAngleThreshold" value="12" size="3" maxlength="2" /></label><br/>';
+            "<br><b>Advanced Editor Options</b><br/>" +
+                `<label>Angle threshold<br/>
+                <input type="text" id="_cMagicWandAngleThreshold" name="_cMagicWandAngleThreshold" value="12" size="3" maxlength="2" />
+            </label><br/>`;
         addon.appendChild(section);
         section = document.createElement("p");
         section.style.paddingTop = "8px";
         section.style.textIndent = "16px";
+        section.style.borderBottom = "2px double grey";
         section.id = "magicwand_common";
         section.innerHTML =
             "<b>Magic wand tool</b><br/>" +
-                '<input type="button" id="_bMagicWandProcessClick" name="_bMagicWandProcessClick" value="CLICK TO START MAGIC WAND" style="color: white; background-color: green" /><br/><br/>' +
+                '<input type="button" id="_bMagicWandProcessClick" name="_bMagicWandProcessClick" value="START MAGIC WAND" style="color: white; background-color: green" /><br/><br/>' +
                 '<b>Status:</b> <span id="_sMagicWandStatus">Disabled</span><br/>' +
                 '<b>Layer:</b> <span id="_sMagicWandUsedLayer"></span><br/>' +
                 "<b>Clicked pixel color to match:</b>" +
@@ -133,9 +142,9 @@ function magicwand() {
                 '<label for="_cMagicWandSampling">Sampling mask size</label><br/>Usually 1-3, larger - smoother and more greedy<br/>' +
                 '<input type="text" id="_cMagicWandSampling" name="_cMagicWandSampling" value="3" size="3" maxlength="1" /><br/>';
         addon.appendChild(section);
-        const newtab = document.createElement("li");
-        newtab.innerHTML = '<a href="#sidepanel-magicwand" data-toggle="tab">MagicWand</a>';
-        navTabs.appendChild(newtab);
+        // const newtab = document.createElement("li");
+        // newtab.innerHTML = '<a href="#sidepanel-magicwand" data-toggle="tab">MagicWand</a>';
+        // navTabs.appendChild(newtab);
         // addon.id = "sidepanel-magicwand";
         // addon.className = "tab-pane";
         // tabContent.appendChild(addon);
@@ -143,10 +152,9 @@ function magicwand() {
             r.tabLabel.innerHTML = "MagicWand";
             r.tabPane.innerHTML = addon.innerHTML;
             loadWMEMagicWandSettings().then(() => {
+                populateLandmarks();
             });
         });
-        populateLandmarks();
-        await loadWMEMagicWandSettings();
         // UI listeners
         $("#_bMagicWandProcessClick").click(switchMagicWandStatus);
         // Event listeners
@@ -159,11 +167,11 @@ function magicwand() {
     async function loadWMEMagicWandSettings() {
         console.log("WME MagicWand: loading options");
         const defaultOptions = {
-            _sMagicWandLandmark: [],
-            _cMagicWandSimilarity: false,
-            _cMagicWandSampling: false,
-            _cMagicWandAngleThreshold: false,
-            lastSaveAction: 0
+            _sMagicWandLandmark: "",
+            _cMagicWandSimilarity: 0,
+            _cMagicWandSampling: 0,
+            _cMagicWandAngleThreshold: 0,
+            lastSaveAction: 0,
         };
         const options = JSON.parse(localStorage.getItem("WMEMagicWandScript"));
         const serverSettings = await WazeWrap.Remote.RetrieveSettings("WMEMagicWandScript");
@@ -172,25 +180,25 @@ function magicwand() {
             $.extend(MWSettings, serverSettings);
         }
         else {
-            console.log('MagicWand: local settings are used');
+            console.log("MagicWand: local settings are used");
         }
-        for (let i = 0; i < getElId("_sMagicWandLandmark")?.options.length; i++) {
-            if (getElId("_sMagicWandLandmark")?.options[i].value === options[2]) {
-                MWSettings._sMagicWandLandmark = true;
-                break;
-            }
-        }
-        getElId("_cMagicWandSimilarity").value = typeof options[3] !== "undefined" ? options[3] : 9;
-        // getElId('_cMagicWandSimplification').value = typeof options[4] !== 'undefined' ? options[4] : 4;
-        getElId("_cMagicWandSampling").value = typeof options[5] !== "undefined" ? options[5] : 3;
-        getElId("_cMagicWandAngleThreshold").value = typeof options[6] !== "undefined" ? options[6] : 12;
+        // for (let i = 0; i < getElId("_sMagicWandLandmark")?.options.length; i++) {
+        //     if (getElId("_sMagicWandLandmark")?.options[i].value === options[2]) {
+        //         MWSettings._sMagicWandLandmark = true;
+        //         break;
+        //     }
+        // }
+        // getElId("_cMagicWandSimilarity")?.value = typeof options[3] !== "undefined" ? options[3] : 9;
+        // // getElId('_cMagicWandSimplification').value = typeof options[4] !== 'undefined' ? options[4] : 4;
+        // getElId("_cMagicWandSampling").value = typeof options[5] !== "undefined" ? options[5] : 3;
+        // getElId("_cMagicWandAngleThreshold").value = typeof options[6] !== "undefined" ? options[6] : 12;
     }
     function registerKeyShortcut(action_name, annotation, callback, key_map) {
         sdk.Shortcuts.createShortcut({
             callback: callback,
             description: annotation,
             shortcutId: action_name,
-            shortcutKeys: key_map
+            shortcutKeys: key_map,
         });
         // W.accelerators.addAction(action_name, { group: "default" });
         // W.accelerators.events.register(action_name, null, callback);
@@ -201,14 +209,15 @@ function magicwand() {
             console.log("WME MagicWand: saving options");
             let options = [];
             // preserve previous options which may get lost after logout
-            if (localStorage.WMEMagicWandScript)
-                options = JSON.parse(localStorage.WMEMagicWandScript);
-            options[2] = getElId("_sMagicWandLandmark").value;
-            options[3] = getElId("_cMagicWandSimilarity").value;
-            // options[4] = getElId('_cMagicWandSimplification').value;
-            options[5] = getElId("_cMagicWandSampling").value;
-            options[6] = getElId("_cMagicWandAngleThreshold").value;
-            localStorage.WMEMagicWandScript = JSON.stringify(options);
+            if (localStorage.contains("WMEMagicWandScript")) {
+                options = JSON.parse(localStorage.getItem("WMEMagicWandScript"));
+            }
+            // options[2] = getElId("_sMagicWandLandmark").value;
+            // options[3] = getElId("_cMagicWandSimilarity").value;
+            // // options[4] = getElId('_cMagicWandSimplification').value;
+            // options[5] = getElId("_cMagicWandSampling").value;
+            // options[6] = getElId("_cMagicWandAngleThreshold").value;
+            localStorage.setItem("WMEMagicWandScript", JSON.stringify(options));
         }
     }
     const highlightLandmarks = () => {
@@ -350,9 +359,11 @@ function magicwand() {
         }
     }
     class OrthogonalizeId {
-        threshold = getElId("_cMagicWandAngleThreshold").value; // degrees within right or straight to alter
-        lowerThreshold = Math.cos((90 - threshold) * (Math.PI / 180));
-        upperThreshold = Math.cos(threshold * (Math.PI / 180));
+        threshold = getElId("_cMagicWandAngleThreshold")?.value
+            ? Number.parseFloat(getElId("_cMagicWandAngleThreshold")?.value)
+            : 0; // degrees within right or straight to alter
+        lowerThreshold = Math.cos((90 - this.threshold) * (Math.PI / 180));
+        upperThreshold = Math.cos(this.threshold * (Math.PI / 180));
         way;
         static magicZero = new MagicPoint([0, 0]);
         constructor(way) {
@@ -457,7 +468,8 @@ function magicwand() {
                 const c = array[(k + 1) % array.length];
                 let p = MagicPoint.subtractPoints(a, b);
                 let q = MagicPoint.subtractPoints(c, b);
-                const scale = 2 * Math.min(this.euclideanDistance(p, OrthogonalizeId.magicZero, this.euclideanDistance(q, OrthogonalizeId.magicZero)));
+                const scale = 2 *
+                    Math.min(this.euclideanDistance(p, OrthogonalizeId.magicZero, this.euclideanDistance(q, OrthogonalizeId.magicZero)));
                 p = normalizePoint(p, 1.0);
                 q = normalizePoint(q, 1.0);
                 let dotp = filterDotProduct(p.x * q.x + p.y * q.y);
@@ -530,7 +542,6 @@ function magicwand() {
         }
     }
     const switchMagicWandStatus = function () {
-        window.wme_magic_wand = !window.wme_magic_wand;
         let bgColor;
         let status;
         let btnText;
@@ -568,7 +579,6 @@ function magicwand() {
             usrOption.appendChild(usrText);
             landmarkTypes.appendChild(usrOption);
         }
-        ;
     }
     function lat2latp(lat) {
         return (180 / Math.PI) * Math.log(Math.tan(Math.PI / 4 + lat * (Math.PI / 180 / 2)));
@@ -781,7 +791,7 @@ function magicwand() {
             $("#_dMagicWandColorpicker").css("background-color", `rgb(${ref_pixel[0]},${ref_pixel[1]},${ref_pixel[2]})`);
             $("#magicwand_common").hide().show();
             let current_pixel;
-            let processed_pixels = [];
+            let processed_pixels = {};
             const polyPixels = [];
             let g = 0;
             let minX = Number.MAX_VALUE;
@@ -803,7 +813,7 @@ function magicwand() {
                 g++;
                 current_pixel = stack.pop();
                 // Already processed before
-                if (typeof processed_pixels[`${current_pixel[0]},${current_pixel[1]}`] !== "undefined") {
+                if (processed_pixels[`${current_pixel[0]},${current_pixel[1]}`]) {
                     continue;
                 }
                 else {
@@ -883,7 +893,6 @@ function magicwand() {
         }
         function resetProcessState(status_msg = null) {
             status_msg = !status_msg ? "Waiting for click" : status_msg;
-            window.wme_magic_wand_process = false;
             $("#_bMagicWandProcessClick").removeAttr("disabled");
             updateStatus(status_msg);
         }
