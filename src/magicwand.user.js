@@ -1,3 +1,4 @@
+"use strict";
 /* eslint-disable */
 // ==UserScript==
 // @name                WME MagicWand
@@ -27,9 +28,11 @@
  * Contributors: justins83, MapOMatic (2023-?)
  */
 /* global W */
-import * as turf from "@turf/turf";
-import proj4 from "proj4";
-import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
+// import * as turf from "@turf/turf";
+// import type { Position } from "geojson";
+// import type { Venue, Selection, WmeSDK, VenueCategory, VenueCategoryId } from "wme-sdk-typings";
+// import proj4 from "proj4";
+// import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
 let sdk;
 window.SDK_INITIALIZED.then(() => {
     if (!window.getWmeSdk) {
@@ -50,15 +53,17 @@ function magicwand() {
         return;
     }
     let MWSettings;
-    let magic_wand_debug = false;
-    let magic_wand_profile = false;
-    let wme_magicwand_helpers = {
+    const magic_wand_debug = false;
+    const magic_wand_profile = false;
+    const wme_magicwand_helpers = {
         isDragging: false,
         draggedNode: null,
         modifiedFeatureControl: null,
         layer: null,
         snap: null,
     };
+    const magic_enabled = false;
+    const magic_wand_process = false;
     /* helper function */
     function getElClass(classname, node) {
         if (!node)
@@ -85,8 +90,6 @@ function magicwand() {
         const navTabs = getElClass("nav-tabs", userTabs)[0];
         const tabContent = getElClass("tab-content", userInfo)[0];
         console.log("WME MagicWand init");
-        var magic_enabled = false;
-        var magic_wand_process = false;
         // add new box to left of the map
         const addon = document.createElement("section");
         addon.innerHTML = `<b>WME Magic Wand</b> v${GM_info.script.version}`;
