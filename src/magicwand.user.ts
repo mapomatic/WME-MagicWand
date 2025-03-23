@@ -188,6 +188,9 @@ function magicwand() {
             r.tabPane.innerHTML = addon.innerHTML;
             loadWMEMagicWandSettings().then(() => {
                 populateLandmarks();
+                $("#mw-ScriptEnabled").on("click", (e: JQuery.ClickEvent) => {
+                    magic_enabled = (e.target as HTMLInputElement).checked;
+                });
             });
         });
 
@@ -731,7 +734,7 @@ function magicwand() {
         // });
 
         sdk.Events.on({
-            eventName: "wme-map-mouse-down",
+            eventName: "wme-map-mouse-up",
             eventHandler(payload) {
                 if (!magic_enabled || magic_wand_process) {
                     return;
@@ -787,7 +790,7 @@ function magicwand() {
                     context = canvas.getContext("2d");
                 }
 
-                if (typeof draw_canvas === "undefined") {
+                if (draw_canvas === "undefined") {
                     draw_canvas = $("<canvas/>")[0];
                 }
 

@@ -153,6 +153,9 @@ function magicwand() {
             r.tabPane.innerHTML = addon.innerHTML;
             loadWMEMagicWandSettings().then(() => {
                 populateLandmarks();
+                $("#mw-ScriptEnabled").on("click", (e) => {
+                    magic_enabled = e.target.checked;
+                });
             });
         });
         // UI listeners
@@ -618,7 +621,7 @@ function magicwand() {
         //     is_reload_tiles = true;
         // });
         sdk.Events.on({
-            eventName: "wme-map-mouse-down",
+            eventName: "wme-map-mouse-up",
             eventHandler(payload) {
                 if (!magic_enabled || magic_wand_process) {
                     return;
@@ -666,7 +669,7 @@ function magicwand() {
                     canvas.height = tile_size.w * layer.grid.length;
                     context = canvas.getContext("2d");
                 }
-                if (typeof draw_canvas === "undefined") {
+                if (draw_canvas === "undefined") {
                     draw_canvas = $("<canvas/>")[0];
                 }
                 draw_canvas.width = canvas.width;
