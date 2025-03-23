@@ -31,11 +31,11 @@
 
 /* global W */
 
-// import * as turf from "@turf/turf";
-// import type { Position } from "geojson";
-// import type { Venue, Selection, WmeSDK, VenueCategory, VenueCategoryId } from "wme-sdk-typings";
-// import proj4 from "proj4";
-// import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
+import * as turf from "@turf/turf";
+import type { Position } from "geojson";
+import type { Venue, Selection, WmeSDK, VenueCategory, VenueCategoryId } from "wme-sdk-typings";
+import proj4 from "proj4";
+import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
 
 let sdk: WmeSDK;
 window.SDK_INITIALIZED.then(() => {
@@ -81,8 +81,8 @@ function magicwand() {
         snap: null,
     };
 
-    const magic_enabled: boolean = false;
-    const magic_wand_process: boolean = false;
+    let magic_enabled = false;
+    let magic_wand_process = false;
 
     /* helper function */
     function getElClass(classname: string, node) {
@@ -192,7 +192,7 @@ function magicwand() {
         });
 
         // UI listeners
-        $("#_bMagicWandProcessClick").click(switchMagicWandStatus);
+        $("#_bMagicWandProcessClick").trigger("click", switchMagicWandStatus);
 
         // Event listeners
         window.addEventListener("beforeunload", saveWMEMagicWandOptions, false);
@@ -644,11 +644,11 @@ function magicwand() {
         let btnText;
         if (magic_enabled) {
             bgColor = "red";
-            btnText = "CLICK TO STOP MAGIC WAND";
+            btnText = "STOP MAGIC WAND";
             status = "Waiting for click";
         } else {
             bgColor = "green";
-            btnText = "CLICK TO START MAGIC WAND";
+            btnText = "START MAGIC WAND";
             status = "Disabled";
         }
 

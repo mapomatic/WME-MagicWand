@@ -1,4 +1,3 @@
-"use strict";
 /* eslint-disable */
 // ==UserScript==
 // @name                WME MagicWand
@@ -28,11 +27,9 @@
  * Contributors: justins83, MapOMatic (2023-?)
  */
 /* global W */
-// import * as turf from "@turf/turf";
-// import type { Position } from "geojson";
-// import type { Venue, Selection, WmeSDK, VenueCategory, VenueCategoryId } from "wme-sdk-typings";
-// import proj4 from "proj4";
-// import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
+import * as turf from "@turf/turf";
+import proj4 from "proj4";
+import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
 let sdk;
 window.SDK_INITIALIZED.then(() => {
     if (!window.getWmeSdk) {
@@ -62,8 +59,8 @@ function magicwand() {
         layer: null,
         snap: null,
     };
-    const magic_enabled = false;
-    const magic_wand_process = false;
+    let magic_enabled = false;
+    let magic_wand_process = false;
     /* helper function */
     function getElClass(classname, node) {
         if (!node)
@@ -159,7 +156,7 @@ function magicwand() {
             });
         });
         // UI listeners
-        $("#_bMagicWandProcessClick").click(switchMagicWandStatus);
+        $("#_bMagicWandProcessClick").trigger("click", switchMagicWandStatus);
         // Event listeners
         window.addEventListener("beforeunload", saveWMEMagicWandOptions, false);
         // Hotkeys
@@ -550,12 +547,12 @@ function magicwand() {
         let btnText;
         if (magic_enabled) {
             bgColor = "red";
-            btnText = "CLICK TO STOP MAGIC WAND";
+            btnText = "STOP MAGIC WAND";
             status = "Waiting for click";
         }
         else {
             bgColor = "green";
-            btnText = "CLICK TO START MAGIC WAND";
+            btnText = "START MAGIC WAND";
             status = "Disabled";
         }
         $(this).css("background-color", bgColor);
