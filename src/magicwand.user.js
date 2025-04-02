@@ -1,3 +1,4 @@
+"use strict";
 /* eslint-disable */
 // ==UserScript==
 // @name                WME MagicWand
@@ -27,9 +28,11 @@
  * Contributors: justins83, MapOMatic (2023-?)
  */
 /* global W */
-import * as turf from "@turf/turf";
-import proj4 from "proj4";
-import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
+// import * as turf from "@turf/turf";
+// import type { Position } from "geojson";
+// import type { Venue, Selection, WmeSDK, VenueCategory, VenueCategoryId } from "wme-sdk-typings";
+// import proj4 from "proj4";
+// import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
 let sdk;
 window.SDK_INITIALIZED.then(() => {
     if (!window.getWmeSdk) {

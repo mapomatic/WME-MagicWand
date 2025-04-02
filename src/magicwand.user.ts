@@ -31,11 +31,11 @@
 
 /* global W */
 
-import * as turf from "@turf/turf";
-import type { Position } from "geojson";
-import type { Venue, Selection, WmeSDK, VenueCategory, VenueCategoryId } from "wme-sdk-typings";
-import proj4 from "proj4";
-import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
+// import * as turf from "@turf/turf";
+// import type { Position } from "geojson";
+// import type { Venue, Selection, WmeSDK, VenueCategory, VenueCategoryId } from "wme-sdk-typings";
+// import proj4 from "proj4";
+// import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
 
 let sdk: WmeSDK;
 window.SDK_INITIALIZED.then(() => {
