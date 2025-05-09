@@ -31,11 +31,11 @@
 
 /* global W */
 
-// import * as turf from "@turf/turf";
-// import type { Position } from "geojson";
-// import type { Venue, Selection, WmeSDK, VenueCategory, VenueCategoryId } from "wme-sdk-typings";
-// import proj4 from "proj4";
-// import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
+import * as turf from "@turf/turf";
+import type { Position } from "geojson";
+import type { Venue, Selection, WmeSDK, VenueCategory, VenueCategoryId } from "wme-sdk-typings";
+import proj4 from "proj4";
+import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
 
 let sdk: WmeSDK;
 window.SDK_INITIALIZED.then(() => {
@@ -216,7 +216,8 @@ function magicwand() {
             _cMagicWandAngleThreshold: 0,
             lastSaveAction: 0,
         };
-        const options: MWOptions | null = JSON.parse(localStorage.getItem("WMEMagicWandScript"));
+        const storedOptions = localStorage.getItem("WMEMagicWandScript");
+        const options: MWOptions | null = (!storedOptions) ? null : JSON.parse(storedOptions);
         const serverSettings = await WazeWrap.Remote.RetrieveSettings("WMEMagicWandScript");
         MWSettings = $.extend({}, defaultOptions, options);
         if (serverSettings && serverSettings.lastSaveAction > MWSettings.lastSaveAction) {
@@ -257,7 +258,8 @@ function magicwand() {
 
             // preserve previous options which may get lost after logout
             if (localStorage.contains("WMEMagicWandScript")) {
-                options = JSON.parse(localStorage.getItem("WMEMagicWandScript"));
+                const storedOptions = localStorage.getItem("WMEMagicWandScript");
+                if(storedOptions !== null) { options = JSON.parse(storedOptions) }
             }
             // options[2] = getElId("_sMagicWandLandmark").value;
             // options[3] = getElId("_cMagicWandSimilarity").value;
@@ -274,11 +276,6 @@ function magicwand() {
             return;
         }
 
-        let geom;
-        let components;
-        let functor;
-        let newWay;
-
         const venues: Venue[] = sdk.DataModel.Venues.getAll();
         // const venues = W.model.venues.getObjectArray();
         for (let i = 0; i < venues.length; i++) {
@@ -288,7 +285,7 @@ function magicwand() {
                 continue;
             }
 
-            // const poly = document.getElementById(SelectedLandmark.geometry.id);
+            const poly = document.getElementById(SelectedLandmark.geometry.id);
             const editingSelection: Selection | null = sdk.Editing.getSelection();
             // check that WME hasn't highlighted this object already
             if (
@@ -313,7 +310,7 @@ function magicwand() {
             // flag this venue as highlighted so we don't update it next time
             poly.setAttribute("stroke-opacity", 0.987);
 
-            geom = SelectedLandmark.geometry.clone();
+            const geom = SelectedLandmark.geometry.clone();
             components = geom.components[0].components;
             functor = new OrthogonalizeId(components);
 
