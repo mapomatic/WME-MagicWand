@@ -278,8 +278,8 @@ function magicwand() {
 
         const venues: Venue[] = sdk.DataModel.Venues.getAll();
         // const venues = W.model.venues.getObjectArray();
-        for (let i = 0; i < venues.length; i++) {
-            const mark: Venue = venues[i];
+        for (const mark of venues) {
+            // const mark: Venue = venues[i];
             // const SelectedLandmark = W.model.venues.get(mark);
             if (mark.geometry.type === "Point") {
                 continue;
