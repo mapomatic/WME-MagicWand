@@ -1,5 +1,3 @@
-"use strict";
-/* eslint-disable */
 // ==UserScript==
 // @name                WME MagicWand
 // @namespace           http://en.advisor.travel/wme-magic-wand
@@ -28,11 +26,9 @@
  * Contributors: justins83, MapOMatic (2023-?)
  */
 /* global W */
-// import * as turf from "@turf/turf";
-// import type { Position } from "geojson";
-// import type { Venue, Selection, WmeSDK, VenueCategory, VenueCategoryId } from "wme-sdk-typings";
-// import proj4 from "proj4";
-// import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
+import * as turf from "@turf/turf";
+import proj4 from "proj4";
+import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
 let sdk;
 window.SDK_INITIALIZED.then(() => {
     if (!window.getWmeSdk) {
@@ -80,11 +76,11 @@ function magicwand() {
         return document.getElementById(node);
     }
     /* =========================================================================== */
-    async function initialiseMagicWand() {
+    async function initializeMagicWand() {
         const userInfo = getElId("user-info");
         const userTabs = getElId("user-tabs");
         if (!getElClass("nav-tabs", userTabs)[0]) {
-            setTimeout(initialiseMagicWand, 1000);
+            setTimeout(initializeMagicWand, 1000);
             return;
         }
         const navTabs = getElClass("nav-tabs", userTabs)[0];
@@ -162,7 +158,25 @@ function magicwand() {
             });
         });
         // UI listeners
-        $("#_bMagicWandProcessClick").trigger("click", switchMagicWandStatus);
+        $("#_bMagicWandProcessClick").on("click", () => {
+            let status;
+            let bgColor;
+            let btnText;
+            if (magic_enabled) {
+                bgColor = "red";
+                btnText = "STOP MAGIC WAND";
+                status = "Waiting for click";
+            }
+            else {
+                bgColor = "green";
+                btnText = "START MAGIC WAND";
+                status = "Disabled";
+            }
+            $(this).css("background-color", bgColor);
+            $(this).val(btnText);
+            updateStatus(status);
+        });
+        $("#_bMagicWandProcessClick").trigger("click");
         // Event listeners
         window.addEventListener("beforeunload", saveWMEMagicWandOptions, false);
         // Hotkeys
@@ -179,8 +193,12 @@ function magicwand() {
             _cMagicWandAngleThreshold: 0,
             lastSaveAction: 0,
         };
-        const options = JSON.parse(localStorage.getItem("WMEMagicWandScript"));
+        const storedOptions = localStorage.getItem("WMEMagicWandScript");
+        const options = (!storedOptions) ? null : JSON.parse(storedOptions);
         const serverSettings = await WazeWrap.Remote.RetrieveSettings("WMEMagicWandScript");
+        if (!serverSettings) {
+            console.log("Unable to Retrieve Settings from Server");
+        }
         MWSettings = $.extend({}, defaultOptions, options);
         if (serverSettings && serverSettings.lastSaveAction > MWSettings.lastSaveAction) {
             $.extend(MWSettings, serverSettings);
@@ -216,7 +234,10 @@ function magicwand() {
             let options = [];
             // preserve previous options which may get lost after logout
             if (localStorage.contains("WMEMagicWandScript")) {
-                options = JSON.parse(localStorage.getItem("WMEMagicWandScript"));
+                const storedOptions = localStorage.getItem("WMEMagicWandScript");
+                if (storedOptions !== null) {
+                    options = JSON.parse(storedOptions);
+                }
             }
             // options[2] = getElId("_sMagicWandLandmark").value;
             // options[3] = getElId("_cMagicWandSimilarity").value;
@@ -230,10 +251,6 @@ function magicwand() {
         if (!$("#_cMagicWandHighlight").prop("checked")) {
             return;
         }
-        let geom;
-        let components;
-        let functor;
-        let newWay;
         const venues = sdk.DataModel.Venues.getAll();
         // const venues = W.model.venues.getObjectArray();
         for (let i = 0; i < venues.length; i++) {
@@ -242,7 +259,7 @@ function magicwand() {
             if (mark.geometry.type === "Point") {
                 continue;
             }
-            // const poly = document.getElementById(SelectedLandmark.geometry.id);
+            const poly = document.getElementById(SelectedLandmark.geometry.id);
             const editingSelection = sdk.Editing.getSelection();
             // check that WME hasn't highlighted this object already
             if (!editingSelection ||
@@ -261,7 +278,7 @@ function magicwand() {
             }
             // flag this venue as highlighted so we don't update it next time
             poly.setAttribute("stroke-opacity", 0.987);
-            geom = SelectedLandmark.geometry.clone();
+            const geom = SelectedLandmark.geometry.clone();
             components = geom.components[0].components;
             functor = new OrthogonalizeId(components);
             newWay = functor.action();
@@ -385,13 +402,9 @@ function magicwand() {
             });
             const corner = { i: 0, dotp: 1 };
             const epsilon = 1e-4;
-            let i;
-            let j;
-            let score;
-            let motions;
             // Triangle
             if (nodes.length === 4) {
-                for (i = 0; i < 1000; i++) {
+                for (const i = 0; i < 1000; i++) {
                     motions = points.map(calcMotion);
                     const tmp = this.addPoints(points[corner.i], motions[corner.i]);
                     points[corner.i].x = tmp.x;
@@ -405,7 +418,7 @@ function magicwand() {
                 n.y = latp2lat(n.y);
                 const pp = new MagicPoint(proj4("EPSG:4326", "EPSG:900913", n.toPosition()));
                 const { id } = nodes[corner.i];
-                for (i = 0; i < nodes.length; i++) {
+                for (let i = 0; i < nodes.length; i++) {
                     if (nodes[i].id !== id) {
                         continue;
                     }
@@ -414,7 +427,6 @@ function magicwand() {
                 }
                 return nodes;
             }
-            let best;
             const originalPoints = nodes.slice(0, nodes.length - 1).map((n) => {
                 const t = n.clone();
                 const p = new MagicPoint(proj4("EPSG:900913", "EPSG:4326", t));
@@ -422,7 +434,7 @@ function magicwand() {
                 return p;
             });
             score = Number.POSITIVE_INFINITY;
-            for (i = 0; i < 1000; i++) {
+            for (const i = 0; i < 1000; i++) {
                 motions = points.map(calcMotion);
                 for (j = 0; j < motions.length; j++) {
                     const tmp = this.addPoints(points[j], motions[j]);
@@ -439,7 +451,7 @@ function magicwand() {
                 }
             }
             points = best;
-            for (i = 0; i < points.length; i++) {
+            for (let i = 0; i < points.length; i++) {
                 // only move the points that actually moved
                 if (originalPoints[i].x !== points[i].x || originalPoints[i].y !== points[i].y) {
                     const n = points[i];
@@ -547,24 +559,6 @@ function magicwand() {
             return this.squareness(points);
         }
     }
-    const switchMagicWandStatus = function () {
-        let bgColor;
-        let status;
-        let btnText;
-        if (magic_enabled) {
-            bgColor = "red";
-            btnText = "STOP MAGIC WAND";
-            status = "Waiting for click";
-        }
-        else {
-            bgColor = "green";
-            btnText = "START MAGIC WAND";
-            status = "Disabled";
-        }
-        $(this).css("background-color", bgColor);
-        $(this).val(btnText);
-        updateStatus(status);
-    };
     function updateStatus(status) {
         $("#_sMagicWandStatus").html(status);
         $("#magicwand_common").hide().show();
@@ -625,7 +619,7 @@ function magicwand() {
         // });
         sdk.Events.on({
             eventName: "wme-map-mouse-up",
-            eventHandler(payload) {
+            eventHandler(pixel) {
                 if (!magic_enabled || magic_wand_process) {
                     return;
                 }
@@ -633,9 +627,9 @@ function magicwand() {
                 $("#_bMagicWandProcessClick").attr("disabled", "disabled");
                 // Get current active layer to process
                 layer = null;
-                const is_imagery_enabled = W.layerSwitcherController.getTogglerState("SATELLITE_IMAGERY");
+                const is_imagery_enabled = W.layerSwitcherController.getTogglerState("ITEM_SATELLITE_IMAGERY");
                 if (is_imagery_enabled) {
-                    $("#_sMagicWandUsedLayer").html("SATELLITE_IMAGERY");
+                    $("#_sMagicWandUsedLayer").html("ITEM_SATELLITE_IMAGERY");
                 }
                 else {
                     resetProcessState();
@@ -649,12 +643,8 @@ function magicwand() {
                 landmark_type =
                     getElId("_sMagicWandLandmark").options[getElId("_sMagicWandLandmark").selectedIndex].value;
                 sampling = Number.parseInt(getElId("_cMagicWandSampling").value, 10);
-                pixel = e.xy;
                 const geojsonLatLon = sdk.Map.getLonLatFromPixel(pixel);
-                const pt = {
-                    type: "Point",
-                    coordinates: [geojsonLatLon.lon, geojsonLatLon.lat],
-                };
+                const pt = turf.point([geojsonLatLon.lon, geojsonLatLon.lat]);
                 const olLatLon = W.userscripts.toOLGeometry(pt);
                 LatLon = { lon: olLatLon.x, lat: olLatLon.y };
                 const tile_size = layer.grid[0][0].size;
@@ -935,7 +925,6 @@ function magicwand() {
             xyz = rgbToXyz(r_pixel[0], r_pixel[1], r_pixel[2]);
             const target_lab = xyzToLab(xyz[0], xyz[1], xyz[2]);
             return cie1994(lab, target_lab, false);
-            //    return Math.sqrt(Math.pow(c_pixel[0] - r_pixel[0], 2) + Math.pow(c_pixel[1] - r_pixel[1], 2) + Math.pow(c_pixel[2] - r_pixel[2], 2));
         }
         // Convert RGB to XYZ
         function rgbToXyz(r, g, b) {
@@ -1102,8 +1091,8 @@ function magicwand() {
             },
             point2CellXY(point) {
                 // (Array) -> Array
-                const x = parseInt(point[0] / this._cellSize, 10);
-                const y = parseInt(point[1] / this._cellSize, 10);
+                const x = Number.parseInt(point[0] / this._cellSize, 10);
+                const y = Number.parseInt(point[1] / this._cellSize, 10);
                 return [x, y];
             },
             extendBbox(bbox, scaleFactor) {
@@ -1320,5 +1309,5 @@ function magicwand() {
             return formatUtil.fromXy(concave, format);
         }
     }
-    initialiseMagicWand();
+    initializeMagicWand();
 }
