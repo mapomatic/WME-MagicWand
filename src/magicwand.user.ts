@@ -1,4 +1,3 @@
-/* eslint-disable */
 // ==UserScript==
 // @name                WME MagicWand
 // @namespace           http://en.advisor.travel/wme-magic-wand
@@ -100,12 +99,12 @@ function magicwand() {
 
     /* =========================================================================== */
 
-    async function initialiseMagicWand() {
+    async function initializeMagicWand() {
         const userInfo = getElId("user-info");
         const userTabs = getElId("user-tabs");
 
         if (!getElClass("nav-tabs", userTabs)[0]) {
-            setTimeout(initialiseMagicWand, 1000);
+            setTimeout(initializeMagicWand, 1000);
             return;
         }
 
@@ -195,7 +194,25 @@ function magicwand() {
         });
 
         // UI listeners
-        $("#_bMagicWandProcessClick").trigger("click", switchMagicWandStatus);
+        $("#_bMagicWandProcessClick").on("click", () => {
+            let status: string;
+            let bgColor: string;
+            let btnText: string;
+            if (magic_enabled) {
+                bgColor = "red";
+                btnText = "STOP MAGIC WAND";
+                status = "Waiting for click";
+            } else {
+                bgColor = "green";
+                btnText = "START MAGIC WAND";
+                status = "Disabled";
+            }
+
+            $(this).css("background-color", bgColor);
+            $(this).val(btnText);
+            updateStatus(status);
+        });
+        $("#_bMagicWandProcessClick").trigger("click");
 
         // Event listeners
         window.addEventListener("beforeunload", saveWMEMagicWandOptions, false);
@@ -219,6 +236,9 @@ function magicwand() {
         const storedOptions = localStorage.getItem("WMEMagicWandScript");
         const options: MWOptions | null = (!storedOptions) ? null : JSON.parse(storedOptions);
         const serverSettings = await WazeWrap.Remote.RetrieveSettings("WMEMagicWandScript");
+        if(!serverSettings) {
+            console.log("Unable to Retrieve Settings from Server");
+        }
         MWSettings = $.extend({}, defaultOptions, options);
         if (serverSettings && serverSettings.lastSaveAction > MWSettings.lastSaveAction) {
             $.extend(MWSettings, serverSettings);
@@ -441,14 +461,10 @@ function magicwand() {
             });
             const corner = { i: 0, dotp: 1 };
             const epsilon = 1e-4;
-            let i;
-            let j;
-            let score;
-            let motions;
 
             // Triangle
             if (nodes.length === 4) {
-                for (i = 0; i < 1000; i++) {
+                for (const i = 0; i < 1000; i++) {
                     motions = points.map(calcMotion);
 
                     const tmp = this.addPoints(points[corner.i], motions[corner.i]);
@@ -466,7 +482,7 @@ function magicwand() {
                 const pp: MagicPoint = new MagicPoint(proj4("EPSG:4326", "EPSG:900913", n.toPosition()));
 
                 const { id } = nodes[corner.i];
-                for (i = 0; i < nodes.length; i++) {
+                for (let i = 0; i < nodes.length; i++) {
                     if (nodes[i].id !== id) {
                         continue;
                     }
@@ -477,7 +493,6 @@ function magicwand() {
 
                 return nodes;
             }
-            let best;
             const originalPoints = nodes.slice(0, nodes.length - 1).map((n) => {
                 const t = n.clone();
                 const p = new MagicPoint(proj4("EPSG:900913", "EPSG:4326", t));
@@ -486,7 +501,7 @@ function magicwand() {
             });
             score = Number.POSITIVE_INFINITY;
 
-            for (i = 0; i < 1000; i++) {
+            for (const i = 0; i < 1000; i++) {
                 motions = points.map(calcMotion);
                 for (j = 0; j < motions.length; j++) {
                     const tmp = this.addPoints(points[j], motions[j]);
@@ -505,7 +520,7 @@ function magicwand() {
 
             points = best;
 
-            for (i = 0; i < points.length; i++) {
+            for (let i = 0; i < points.length; i++) {
                 // only move the points that actually moved
                 if (originalPoints[i].x !== points[i].x || originalPoints[i].y !== points[i].y) {
                     const n: MagicPoint = points[i];
@@ -637,26 +652,6 @@ function magicwand() {
             return this.squareness(points);
         }
     }
-
-    const switchMagicWandStatus = function () {
-        let bgColor;
-        let status;
-        let btnText;
-        if (magic_enabled) {
-            bgColor = "red";
-            btnText = "STOP MAGIC WAND";
-            status = "Waiting for click";
-        } else {
-            bgColor = "green";
-            btnText = "START MAGIC WAND";
-            status = "Disabled";
-        }
-
-        $(this).css("background-color", bgColor);
-        $(this).val(btnText);
-        updateStatus(status);
-    };
-
     function updateStatus(status) {
         $("#_sMagicWandStatus").html(status);
         $("#magicwand_common").hide().show();
@@ -732,7 +727,7 @@ function magicwand() {
 
         sdk.Events.on({
             eventName: "wme-map-mouse-up",
-            eventHandler(payload) {
+            eventHandler(pixel) {
                 if (!magic_enabled || magic_wand_process) {
                     return;
                 }
@@ -743,11 +738,11 @@ function magicwand() {
                 // Get current active layer to process
                 layer = null;
 
-                const is_imagery_enabled: boolean = W.layerSwitcherController.getTogglerState("SATELLITE_IMAGERY");
+                const is_imagery_enabled: boolean = W.layerSwitcherController.getTogglerState("ITEM_SATELLITE_IMAGERY");
                 if(is_imagery_enabled) {
-                    $("#_sMagicWandUsedLayer").html("SATELLITE_IMAGERY")
+                    $("#_sMagicWandUsedLayer").html("ITEM_SATELLITE_IMAGERY")
                 }
-                    else {
+                else {
                     resetProcessState();
                     alert("Please make of the base layers active (default to Google)");
                     return;
@@ -756,17 +751,13 @@ function magicwand() {
                 // simplify_param = parseInt(getElId('_cMagicWandSimplification').value, 10);
                 color_sensitivity = Number.parseInt((getElId("_cMagicWandSimilarity") as HTMLInputElement).value, 10);
                 color_distance = Number.parseInt((getElId("_cMagicWandSimilarity") as HTMLInputElement).value, 10);
-                color_algorithm = getElId("_rMagicWandColorAlgorithm_lab").checked ? "LAB" : "sensitivity";
+                color_algorithm = (getElId("_rMagicWandColorAlgorithm_lab") as HTMLInputElement).checked ? "LAB" : "sensitivity";
                 landmark_type =
-                    getElId("_sMagicWandLandmark").options[getElId("_sMagicWandLandmark").selectedIndex].value;
+                    (getElId("_sMagicWandLandmark") as HTMLSelectElement).options[(getElId("_sMagicWandLandmark") as HTMLSelectElement).selectedIndex].value;
                 sampling = Number.parseInt((getElId("_cMagicWandSampling") as HTMLInputElement).value, 10);
 
-                pixel = e.xy;
                 const geojsonLatLon = sdk.Map.getLonLatFromPixel(pixel);
-                const pt: GeoJSON.Point = {
-                    type: "Point",
-                    coordinates: [geojsonLatLon.lon, geojsonLatLon.lat],
-                };
+                const pt: GeoJSON.Point = turf.point([geojsonLatLon.lon, geojsonLatLon.lat]);
                 const olLatLon = W.userscripts.toOLGeometry(pt);
                 LatLon = { lon: olLatLon.x, lat: olLatLon.y };
 
@@ -863,7 +854,7 @@ function magicwand() {
                             total_tiles--;
                         };
 
-                        img.onerror = function onerror(e1) {
+                        img.onerror = function onerror(e1: string | Event) {
                             console.log("WME MagicWand: Cannot load tile: ", e1);
                         };
 
@@ -1123,11 +1114,10 @@ function magicwand() {
 
             return cie1994(lab, target_lab, false);
 
-            //    return Math.sqrt(Math.pow(c_pixel[0] - r_pixel[0], 2) + Math.pow(c_pixel[1] - r_pixel[1], 2) + Math.pow(c_pixel[2] - r_pixel[2], 2));
-        }
+         }
 
         // Convert RGB to XYZ
-        function rgbToXyz(r, g, b) {
+        function rgbToXyz(r: number, g: number, b: number) {
             let _r = r / 255;
             let _g = g / 255;
             let _b = b / 255;
@@ -1265,7 +1255,7 @@ function magicwand() {
             this._cells = [];
             this._cellSize = cellSize;
 
-            points.forEach(function gridPoint(point) {
+            points.forEach(function gridPoint(this: any, point: any) {
                 const cellXY = this.point2CellXY(point);
                 const x = cellXY[0];
                 const y = cellXY[1];
@@ -1318,10 +1308,10 @@ function magicwand() {
                 return cell;
             },
 
-            point2CellXY(point) {
+            point2CellXY(point: Position): Position {
                 // (Array) -> Array
-                const x = parseInt(point[0] / this._cellSize, 10);
-                const y = parseInt(point[1] / this._cellSize, 10);
+                const x = Number.parseInt(point[0] / this._cellSize, 10);
+                const y = Number.parseInt(point[1] / this._cellSize, 10);
                 return [x, y];
             },
 
@@ -1587,5 +1577,5 @@ function magicwand() {
         }
     }
 
-    initialiseMagicWand();
+    initializeMagicWand();
 }
