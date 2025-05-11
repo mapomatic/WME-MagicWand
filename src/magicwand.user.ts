@@ -122,8 +122,8 @@ function magicwand() {
         enableScriptParagraph.innerHTML = `
                     <div>
                         <div class='mw-option-container' style='float:left;'>
-                            <input type=checkbox class='mw-checkbox' id='mw-ScriptEnabled' />
-                            <label class='mw-label' for='mw-ScriptEnabled'>Enable Script<span class='mw-trans-enabled'></span></label>
+                            <input type=checkbox class='mw-checkbox  mw-Settings' id='mw-ScriptEnabled' />
+                            <label class='mw-label mw-Settings' for='mw-ScriptEnabled'>Enable Script<span class='mw-trans-enabled'></span></label>
                         </div>
                     </div>
         `;
@@ -135,8 +135,7 @@ function magicwand() {
         section.id = "magicwand_advanced";
         section.innerHTML =
             "<br><b>Advanced Editor Options</b><br/>" +
-            `<label>Angle threshold<br/>
-                <input type="text" id="_cMagicWandAngleThreshold" name="_cMagicWandAngleThreshold" value="12" size="3" maxlength="2" />
+            `<label>Angle Threshold: <input type="text" id="_cMagicWandAngleThreshold" name="_cMagicWandAngleThreshold" class="mw-Settings" value="12" size="3" maxlength="2" />
             </label><br/>`;
         addon.appendChild(section);
 
@@ -162,10 +161,10 @@ function magicwand() {
         section.innerHTML =
             "<b>Options</b><br/>" +
             "Landmark type:<br/>" +
-            '<select id="_sMagicWandLandmark" name="_sMagicWandLandmark" style="width: 95%"></select><br/><br/>' +
+            '<select id="_sMagicWandLandmark" name="_sMagicWandLandmark" class="mw-Settings" style="width: 95%"></select><br/><br/>' +
             "Color match algorithm:<br/>" +
-            '<label><input type="radio" id="_rMagicWandColorAlgorithm_color" name="_rMagicWandColorAlgorithm" value="1" checked="checked" /> Color Distance</label><br/>' +
-            '<label><input type="radio" id="_rMagicWandColorAlgorithm_lab" name="_rMagicWandColorAlgorithm" value="2" /> Human-eye Similarity</label><br/><br/>' +
+            '<label><input type="radio" class="mw-Settings" id="_rMagicWandColorAlgorithm_color" name="_rMagicWandColorAlgorithm" value="1" checked="checked" /> Color Distance</label><br/>' +
+            '<label><input type="radio" class="mw-Settings" id="_rMagicWandColorAlgorithm_lab" name="_rMagicWandColorAlgorithm" value="2" /> Human-eye Similarity</label><br/><br/>' +
             '<label for="_cMagicWandSimilarity">Tolerance</label><br/>Around 4-10, >20 very slow<br/>' +
             '<input type="text" id="_cMagicWandSimilarity" name="_cMagicWandSimilarity" value="8" size="4" maxlength="3" /><br/><br/>' +
             // + '<label for="_cMagicWandSimplification">Landmark simplification</label><br/>Usually 0-5, lesser gives more points in polygon<br/>'
@@ -697,7 +696,7 @@ function magicwand() {
 
         let canvas: HTMLCanvasElement;
         let draw_canvas: HTMLCanvasElement;
-        let total_tiles;
+        let total_tiles: number;
         let clickCanvasX: number;
         let clickCanvasY: number;
         let viewOffsetX;
@@ -710,7 +709,7 @@ function magicwand() {
         let landmark_type: VenueCategory;
         let sampling = 3;
         let waited_for = 0;
-        let is_reload_tiles = true;
+        let is_reload_tiles = false;
 
         sdk.Events.on({
             eventName: "wme-map-move-end",
@@ -766,6 +765,11 @@ function magicwand() {
                     sampling = Number.parseInt((getElId("_cMagicWandSampling") as HTMLInputElement).value, 10);
 
                     const LatLon = sdk.Map.getLonLatFromPixel(pixel);
+                    const olProj = proj4("EPSG:4326", "EPSG:3857", [LatLon.lon, LatLon.lat])
+                    const olLatLon = {
+                        lon: olProj[0],
+                        lat: olProj[1]
+                    };
                     const pt: GeoJSON.Point = turf.point([LatLon.lon, LatLon.lat]);
                     // const olLatLon = W.userscripts.toOLGeometry(pt);
                     // LatLon = { lon: olLatLon.x, lat: olLatLon.y };
@@ -781,14 +785,14 @@ function magicwand() {
                             context?.clearRect(0, 0, canvas.width, canvas.height);
                         }
                     } else {
-                        canvas = $("canvas")[0] as HTMLCanvasElement;
+                        canvas = document.createElement("canvas");
                         canvas.width = tile_size.h * layer.grid[0].length;
                         canvas.height = tile_size.w * layer.grid.length;
                         context = (canvas as HTMLCanvasElement).getContext("2d");
                     }
 
-                    if (draw_canvas) {
-                        draw_canvas = $("canvas")[0] as HTMLCanvasElement;
+                    if (!draw_canvas) {
+                        draw_canvas = document.createElement("canvas");
                     }
 
                     draw_canvas.width = canvas.width;
@@ -797,12 +801,12 @@ function magicwand() {
                     total_tiles = layer.grid.length * layer.grid[0].length;
                     waited_for = 0;
 
-                    let clientX;
-                    let clientY;
-                    let offsetX;
-                    let offsetY;
-                    let imageX;
-                    let imageY;
+                    let clientX: number;
+                    let clientY: number;
+                    let offsetX: number;
+                    let offsetY: number;
+                    let imageX: number;
+                    let imageY: number;
                     let tile;
                     let img;
                     let location;
@@ -813,10 +817,10 @@ function magicwand() {
                         for (let tilei = 0; tilei < layer.grid[tilerow].length; tilei++) {
                             tile = layer.grid[tilerow][tilei];
 
-                            if (tile.bounds.containsLonLat(LatLon, false)) {
+                            if (tile.bounds.containsLonLat(olLatLon, false)) {
                                 // Click position on div image
-                                clientX = e.pageX;
-                                clientY = e.pageY;
+                                clientX = pixel.x;
+                                clientY = pixel.y;
 
                                 offsetX = $(tile.imgDiv).offset().left;
                                 offsetY = $(tile.imgDiv).offset().top;
@@ -847,17 +851,16 @@ function magicwand() {
 
                             // eslint-disable-next-line no-loop-func
                             img.onload = function onload() {
-                                const img1 = this;
-                                const tilei1 = $(img1).data("tilei");
-                                const tilerow1 = $(img1).data("tilerow");
+                                const tilei1 = $(this).data("tilei");
+                                const tilerow1 = $(this).data("tilerow");
 
                                 // Add tile to canvas
                                 context?.drawImage(
-                                    img1,
+                                    this,
                                     tile_size.w * tilei1,
                                     tile_size.h * tilerow1,
-                                    img1.width,
-                                    img1.height
+                                    this.width,
+                                    this.height
                                 );
 
                                 total_tiles--;
@@ -904,7 +907,7 @@ function magicwand() {
                     return;
                 }
 
-                window.setTimeout(waitForLoad, 200);
+                window.setTimeout(waitForLoad, 500);
             } else {
                 is_reload_tiles = false;
                 process();
@@ -949,7 +952,7 @@ function magicwand() {
             const ref_pixel = getPixelInfo(canvas_data, clickCanvasX, clickCanvasY);
 
             const draw_canvas_context = draw_canvas.getContext("2d");
-            draw_canvas_context.drawImage(canvas, 0, 0);
+            draw_canvas_context?.drawImage(canvas, 0, 0);
 
             $("#_dMagicWandColorpicker").css(
                 "background-color",
@@ -974,8 +977,8 @@ function magicwand() {
 
             updateStatus("Processing tiles image");
 
-            const id = draw_canvas_context.createImageData(1, 1);
-            const d = id.data;
+            const id = draw_canvas_context?.createImageData(1, 1);
+            const d = id?.data;
             d[0] = 255;
             d[1] = 0;
             d[2] = 0;
