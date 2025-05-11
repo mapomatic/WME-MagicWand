@@ -60,6 +60,7 @@ function magicwand() {
 
     // const wmelmw_version = GM_info.script.version;
     interface MWOptions {
+        _enabled: boolean;
         _sMagicWandLandmark: string;
         _cMagicWandSimilarity: number;
         _cMagicWandSampling: number;
@@ -71,6 +72,7 @@ function magicwand() {
 
     const magic_wand_debug = false;
     const magic_wand_profile = false;
+    let lastSaveTime = 0;
 
     const wme_magicwand_helpers = {
         isDragging: false,
@@ -80,7 +82,6 @@ function magicwand() {
         snap: null,
     };
 
-    let magic_enabled = false;
     let magic_wand_process = false;
 
     /* helper function */
@@ -186,8 +187,9 @@ function magicwand() {
             loadWMEMagicWandSettings().then(() => {
                 populateLandmarks();
                 $("#mw-ScriptEnabled").on("click", (e: JQuery.ClickEvent) => {
-                    magic_enabled = (e.target as HTMLInputElement).checked;
+                    MWSettings._enabled = (e.target as HTMLInputElement).checked;
                 });
+                (document.getElementById("mw-ScriptEnabled") as HTMLInputElement).checked = MWSettings._enabled;
             });
         });
 
@@ -196,7 +198,7 @@ function magicwand() {
             let status: string;
             let bgColor: string;
             let btnText: string;
-            if (magic_enabled) {
+            if (MWSettings._enabled) {
                 bgColor = "red";
                 btnText = "STOP MAGIC WAND";
                 status = "Waiting for click";
@@ -213,7 +215,7 @@ function magicwand() {
         $("#_bMagicWandProcessClick").trigger("click");
 
         // Event listeners
-        window.addEventListener("beforeunload", saveWMEMagicWandOptions, false);
+        // window.addEventListener("beforeunload", saveWMEMagicWandOptions, false);
 
         // Hotkeys
         registerKeyShortcut("WMEMagicWand_HighlightLandmark", "Highlight Landmarks", highlightLandmarks, "C+k");
@@ -225,6 +227,7 @@ function magicwand() {
     async function loadWMEMagicWandSettings() {
         console.log("WME MagicWand: loading options");
         const defaultOptions: MWOptions = {
+            _enabled: false,
             _sMagicWandLandmark: "",
             _cMagicWandSimilarity: 0,
             _cMagicWandSampling: 0,
@@ -270,24 +273,13 @@ function magicwand() {
     }
 
     function saveWMEMagicWandOptions() {
-        if (localStorage) {
+        const currentTime = new Date().getTime();
+        if (localStorage && currentTime - lastSaveTime > 5000 /* Check if last Save was more than 5 seconds ago */) {
             console.log("WME MagicWand: saving options");
-            let options = [];
 
-            // preserve previous options which may get lost after logout
-            if (localStorage.contains("WMEMagicWandScript")) {
-                const storedOptions = localStorage.getItem("WMEMagicWandScript");
-                if (storedOptions !== null) {
-                    options = JSON.parse(storedOptions);
-                }
-            }
-            // options[2] = getElId("_sMagicWandLandmark").value;
-            // options[3] = getElId("_cMagicWandSimilarity").value;
-            // // options[4] = getElId('_cMagicWandSimplification').value;
-            // options[5] = getElId("_cMagicWandSampling").value;
-            // options[6] = getElId("_cMagicWandAngleThreshold").value;
-
-            localStorage.setItem("WMEMagicWandScript", JSON.stringify(options));
+            localStorage.setItem("WMEMagicWandScript", JSON.stringify(MWSettings));
+            WazeWrap.Remote.SaveSettings("WMEMagicWandScript", MWSettings);
+            lastSaveTime = currentTime;
         }
     }
 
@@ -711,6 +703,12 @@ function magicwand() {
         let waited_for = 0;
         let is_reload_tiles = false;
 
+        // $(document).on('click', ".mw-Settings", () => {
+        //     saveWMEMagicWandOptions();
+        // });
+        $(document).on("change", ".mw-Settings", () => {
+            saveWMEMagicWandOptions();
+        });
         sdk.Events.on({
             eventName: "wme-map-move-end",
             eventHandler: () => {
@@ -726,7 +724,7 @@ function magicwand() {
             eventName: "wme-map-mouse-up",
             eventHandler(pixel) {
                 try {
-                    if (!magic_enabled || magic_wand_process) {
+                    if (!MWSettings._enabled || magic_wand_process) {
                         return;
                     }
 
