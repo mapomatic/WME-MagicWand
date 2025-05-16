@@ -22,8 +22,6 @@
     },
     "private": true,
     "dependencies": {
-        "@types/i18n": "^0.13.12",
-        "i18n": "^0.15.1",
         "jquery": "^3.7.1",
         "prettier": "^3.5.3"
     }

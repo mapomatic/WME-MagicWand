@@ -456,7 +456,7 @@ function magicwand() {
 
             // Triangle
             if (nodes.length === 4) {
-                for (const i = 0; i < 1000; i++) {
+                for (let i = 0; i < 1000; i++) {
                     motions = points.map(calcMotion);
 
                     const tmp = this.addPoints(points[corner.i], motions[corner.i]);
@@ -493,7 +493,7 @@ function magicwand() {
             });
             score = Number.POSITIVE_INFINITY;
 
-            for (const i = 0; i < 1000; i++) {
+            for (let i = 0; i < 1000; i++) {
                 motions = points.map(calcMotion);
                 for (j = 0; j < motions.length; j++) {
                     const tmp = this.addPoints(points[j], motions[j]);
@@ -786,7 +786,7 @@ function magicwand() {
                         canvas = document.createElement("canvas");
                         canvas.width = tile_size.h * layer.grid[0].length;
                         canvas.height = tile_size.w * layer.grid.length;
-                        context = (canvas as HTMLCanvasElement).getContext("2d");
+                        context = (canvas as HTMLCanvasElement).getContext("2d");                        
                     }
 
                     if (!draw_canvas) {
@@ -844,7 +844,7 @@ function magicwand() {
                             updateStatus("Loading tiles");
 
                             // Have to recreate image - image should have crossOrigin attribute set to "anonymous"
-                            img = $("img")[0];
+                            img = document.createElement("img");
                             $(img).data("tilei", tilei).data("tilerow", tilerow).attr("crossOrigin", "anonymous");
 
                             // eslint-disable-next-line no-loop-func
@@ -873,7 +873,7 @@ function magicwand() {
                             // DO NOT USE FOR EDITS
                             const alt_img = $(`img[data-default_url="${img_url}"]`);
                             if (alt_img.length > 0) {
-                                img_url = alt_img[0].src;
+                                img_url = (alt_img[0] as HTMLImageElement).src;
                             }
 
                             location = getLocation(img_url);
@@ -905,7 +905,7 @@ function magicwand() {
                     return;
                 }
 
-                window.setTimeout(waitForLoad, 500);
+                window.setTimeout(waitForLoad, 200);
             } else {
                 is_reload_tiles = false;
                 process();
@@ -946,7 +946,8 @@ function magicwand() {
         }
 
         function process() {
-            let canvas_data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+            const settings: ImageDataSettings = {}
+            let canvas_data = context?.getImageData(0, 0, canvas.width, canvas.height, {}).data;
             const ref_pixel = getPixelInfo(canvas_data, clickCanvasX, clickCanvasY);
 
             const draw_canvas_context = draw_canvas.getContext("2d");
@@ -1062,7 +1063,7 @@ function magicwand() {
 
                 points = [];
                 for (let j = 0; j < polyPixels.length; j++) {
-                    points.push(new MagicPoint(polyPixels[j][0], polyPixels[j][1]));
+                    points.push(new MagicPoint([polyPixels[j][0], polyPixels[j][1]]));
                 }
 
                 const convolutionHull = hull(points, 40, [".x", ".y"]);
@@ -1098,17 +1099,18 @@ function magicwand() {
 
             for (let k = 0; k < points.length; k++) {
                 const o = points[k];
-                // point_lonlat = W.map.getLonLatFromPixel(new OpenLayers.Pixel(o.x, o.y));
-                polyPoints.push([o.x, o.y]);
+                const point_lonlat = sdk.Map.getLonLatFromPixel(o);
+                polyPoints.push([point_lonlat.lon, point_lonlat.lat]);
             }
 
             // const LineString = new OpenLayers.Geometry.LineString(polyPoints);
             // if (simplify > 0) {
             //     LineString = LineString.simplify(simplify);
             // }
-            const polygon = turf.polygon([polyPoints]).geometry;
 
-            sdk.DataModel.Venues.addVenue({ landmark_type, polygon });
+            const polygon = turf.polygon([polyPoints]);
+
+            sdk.DataModel.Venues.addVenue({ category: landmark_type, geometry: polygon.geometry });
             // const WazefeatureVectorLandmark = require("Waze/Feature/Vector/Landmark");
             // const WazeActionAddLandmark = require("Waze/Action/AddLandmark");
 
