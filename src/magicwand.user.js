@@ -28,8 +28,7 @@
  */
 /* global W */
 // import * as turf from "@turf/turf";
-// import type { Position } from "geojson";
-// import type { Venue, Selection, WmeSDK, VenueCategory, VenueCategoryId } from "wme-sdk-typings";
+// import  type { WmeSDK, Venue, VenueCategory, VenueCategoryId, SelectionWithLocalizedTypeName } from "wme-sdk-typings";
 // import proj4 from "proj4";
 // import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
 let sdk;
@@ -52,17 +51,9 @@ function magicwand() {
         return;
     }
     let MWSettings;
-    const magic_wand_debug = false;
-    const magic_wand_profile = false;
     let lastSaveTime = 0;
-    const wme_magicwand_helpers = {
-        isDragging: false,
-        draggedNode: null,
-        modifiedFeatureControl: null,
-        layer: null,
-        snap: null,
-    };
     let magic_wand_process = false;
+    let magicwand_processing_allowed = false;
     /* helper function */
     function getElClass(classname, node) {
         if (!node)
@@ -90,59 +81,82 @@ function magicwand() {
         const tabContent = getElClass("tab-content", userInfo)[0];
         console.log("WME MagicWand init");
         // add new box to left of the map
-        const addon = document.createElement("section");
-        addon.innerHTML = `<b>WME Magic Wand</b> v${GM_info.script.version}`;
-        const enableScriptParagraph = document.createElement("p");
-        enableScriptParagraph.style.borderBottom = "2px double grey";
-        enableScriptParagraph.innerHTML = `
-                    <div>
-                        <div class='mw-option-container' style='float:left;'>
-                            <input type=checkbox class='mw-checkbox  mw-Settings' id='mw-ScriptEnabled' />
-                            <label class='mw-label mw-Settings' for='mw-ScriptEnabled'>Enable Script<span class='mw-trans-enabled'></span></label>
-                        </div>
+        const addon = [`
+            <div class='mw-header' style='display:block;'>
+                <label class='mw-header mw-header-script-name' style='font-weight:bold'><span>WME Magic Wand</span></label>
+                <span class="mw-header mw-header-version">v${GM_info.script.version}</span>
+            </div>
+            <div style='border-bottom:2px double grey'>
+                <div class='mw-option-container' style='display:block'>
+                    <input type=checkbox class='mw-checkbox  mw-Settings' id='mw-ScriptEnabled' />
+                    <label class='mw-label mw-Settings' for='mw-ScriptEnabled'>Enable Script<span class='mw-trans-enabled'></span></label>
+                </div>
+            </div>
+            <div class='mw-advanced-options' id='magicwand-advanced' style='display:block;padding-top:8px;border-bottom:2px double grey'>
+                <div class='mw-advanced-options mw-advanced-options-label'>
+                    <div class='mw-advance-options mw-advanced-options-title'><span class='mw-advanced-options-title' style='font-weight:bold'>Advanced Editor Options</span></div>
+                    <div class='mw-advanced-options mw-advanced-obtions-angle-threshold'>
+                        <label class='mw-advanced-options mw-advanced-obtions-angle-threshold mw-advanced-obtions-angle-threshold-label' for='_cMagicWandAngleThreshold'><span>Angle Threshold:</span></label>
+                        <input type="text" id="_cMagicWandAngleThreshold" name="_cMagicWandAngleThreshold" class="mw-Settings" value="12" size="3" maxlength="2" />
                     </div>
-        `;
-        addon.appendChild(enableScriptParagraph);
-        let section = document.createElement("p");
-        section.style.paddingTop = "8px";
-        section.style.textIndent = "16px";
-        section.id = "magicwand_advanced";
-        section.innerHTML =
-            "<br><b>Advanced Editor Options</b><br/>" +
-                `<label>Angle Threshold: <input type="text" id="_cMagicWandAngleThreshold" name="_cMagicWandAngleThreshold" class="mw-Settings" value="12" size="3" maxlength="2" />
-            </label><br/>`;
-        addon.appendChild(section);
-        section = document.createElement("p");
-        section.style.paddingTop = "8px";
-        section.style.textIndent = "16px";
-        section.style.borderBottom = "2px double grey";
-        section.id = "magicwand_common";
-        section.innerHTML =
-            "<b>Magic wand tool</b><br/>" +
-                '<input type="button" id="_bMagicWandProcessClick" name="_bMagicWandProcessClick" value="START MAGIC WAND" style="color: white; background-color: green" /><br/><br/>' +
-                '<b>Status:</b> <span id="_sMagicWandStatus">Disabled</span><br/>' +
-                '<b>Layer:</b> <span id="_sMagicWandUsedLayer"></span><br/>' +
-                "<b>Clicked pixel color to match:</b>" +
-                '<div id="_dMagicWandColorpicker" style="width: 20px; height: 20px; border: 1px solid black; display: inline-block; margin-left: 10px;">&nbsp;</div><br/>';
-        addon.appendChild(section);
-        section = document.createElement("p");
-        section.style.paddingTop = "8px";
-        section.style.textIndent = "16px";
-        section.id = "magicwand_advanced";
-        section.innerHTML =
-            "<b>Options</b><br/>" +
-                "Landmark type:<br/>" +
-                '<select id="_sMagicWandLandmark" name="_sMagicWandLandmark" class="mw-Settings" style="width: 95%"></select><br/><br/>' +
-                "Color match algorithm:<br/>" +
-                '<label><input type="radio" class="mw-Settings" id="_rMagicWandColorAlgorithm_color" name="_rMagicWandColorAlgorithm" value="1" checked="checked" /> Color Distance</label><br/>' +
-                '<label><input type="radio" class="mw-Settings" id="_rMagicWandColorAlgorithm_lab" name="_rMagicWandColorAlgorithm" value="2" /> Human-eye Similarity</label><br/><br/>' +
-                '<label for="_cMagicWandSimilarity">Tolerance</label><br/>Around 4-10, >20 very slow<br/>' +
-                '<input type="text" id="_cMagicWandSimilarity" name="_cMagicWandSimilarity" value="8" size="4" maxlength="3" /><br/><br/>' +
-                // + '<label for="_cMagicWandSimplification">Landmark simplification</label><br/>Usually 0-5, lesser gives more points in polygon<br/>'
-                // + '<input type="text" id="_cMagicWandSimplification" name="_cMagicWandSimplification" value="3" size="5" maxlength="4" /><br/><br/>'
-                '<label for="_cMagicWandSampling">Sampling mask size</label><br/>Usually 1-3, larger - smoother and more greedy<br/>' +
-                '<input type="text" id="_cMagicWandSampling" name="_cMagicWandSampling" value="3" size="3" maxlength="1" /><br/>';
-        addon.appendChild(section);
+                </div>
+            </div>
+            <div class='mw-script-controls' style='border-bottom:2px double grey;padding-top:8px'>
+                <div class='mw-script-controls mw-script-controls-wrapper'>
+                    <div class='magicwand_common magicwand_common_button' style='display:block;'>
+                        <label class="magicwand_common magicwand_common_button_label" for='_bMagicWandProcessClick' style='font-weight:bold'><span class='magicwand_common magicwand_common_button_label'>Magic Wand Control:</span></label>
+                        <button type="button" class="mw-common-process-click" id="_bMagicWandProcessClick" name="_bMagicWandProcessClick" style="color:white; background-color: green">START MAGIC WAND</button>
+                    </div>
+                    <div class='magicwand_common magicwand_common_status' style='display:block;'>
+                        <label class="magicwand_common_status magicwand_common_status_label" for='_sMagicWandStatus' style='font-weight:bold'>Status: </label>
+                        <span id="_sMagicWandStatus">Disabled</span>
+                    </div>
+                    <div class='magicwand_common magicwand_common_layer' style='display:block;'>
+                        <label class="magicwand_common_layer magicwand_common_layer_label" for='_sMagicWandUsedLayer' style='font-weight:bold'>Layer:</label>
+                        <span id="_sMagicWandUsedLayer"></span>
+                    </div>
+                    <div class='magicwand_common magicwand_color_to_match' style='display:block;'>
+                        <label class="magicwand_common_color_to_match magicwand_common_color_to_match_label" for='_dMagicWandColorpicker' style='font-weight:bold'>Clicked pixel color to match:</label>
+                        <div id="_dMagicWandColorpicker" style="width: 20px; height: 20px; border: 1px solid black;margin-left: 10px;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class='mw-options' style='display:block;border-bottom:2px double grey;padding-top:8px'>
+                <div class='mw-options mw-options-landmark'>
+                    <label class='mw-options mw-options-landmark mw-options-landmark-label' id='mw-options-landmark-label' for='_sMagicWandLandmark'><span>Landmark type:</span></label>
+                    <select id="_sMagicWandLandmark" name="_sMagicWandLandmark" class="mw-Settings" style="width: 95%"></select>
+                </div>
+                <div class='mw-options mw-options-color-algorithm' id='magicwand_advanced' style='display:grid'>
+                    <label class='mw-options mw-options-color-algorithm mw-options-color-algorithm-label' for='_rMagicWandColorAlgorithm_color' style='font-weight:bold'><span>Color match algorithm:</span></label>
+                    <div class='mw-options mw-options-color-algorithm mw-options-color-algorithm-distance' style='display:block'>
+                        <input type="radio" class="mw-Settings" id="_rMagicWandColorAlgorithm_color" name="_rMagicWandColorAlgorithm" value="1" checked="checked" />
+                        <label class='mw-options mw-options-color-algorithm mw-options-color-algorithm-distance' for='_rMagicWandColorAlgorithm_color'><span>Color Distance<span></label>
+                    </div>
+                    <div class='mw-options mw-options-color-algorithm mw-options-color-algorithm-lab' style='display:block'>
+                        <input type="radio" class="mw-Settings" id="_rMagicWandColorAlgorithm_lab" name="_rMagicWandColorAlgorithm" value="2" />
+                        <label class='mw-options mw-options-color-algorithm mw-options-color-algorithm-distance' for='_rMagicWandColorAlgorithm_lab'><span>Human-eye Similarity</span></label>
+                    </div>
+                </div>
+                <div class='mw-options mw-options-color-tolerance'>
+                    <table>
+                        <tr>
+                            <td style="padding-left:4px"><label for="_cMagicWandSimilarity">Tolerance:</label></td>
+                            <td style="padding-left:4px"><input type="number" id="_cMagicWandSimilarity" name="_cMagicWandSimilarity" value="8" min="4" max="100" step="1" /></td>
+                            <td style="padding-left:4px"><span style="text-wrap:balanced">Around 4-10, >20 very slow</span></td>
+                        </tr>
+                    </table>
+                </div>
+                <div class='mw-options mw-options-color-sampling' style='display:block'>
+                    <table>
+                        <tr>
+                            <td style="padding-left:4px"><label class='mw-options mw-options-color-sampling' for="_cMagicWandSampling">Sampling mask size</label></td>
+                            <td style="padding-left:4px"><input type="number" id="_cMagicWandSampling" name="_cMagicWandSampling" value="3" min="1" max="9" step="1" /></td>
+                            <td style="padding-left:4px"><span style="text-wrap:balanced">Usually 1-3, larger - smoother and more greedy</span></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        `].join(" ");
         // const newtab = document.createElement("li");
         // newtab.innerHTML = '<a href="#sidepanel-magicwand" data-toggle="tab">MagicWand</a>';
         // navTabs.appendChild(newtab);
@@ -151,7 +165,7 @@ function magicwand() {
         // tabContent.appendChild(addon);
         sdk.Sidebar.registerScriptTab().then((r) => {
             r.tabLabel.innerHTML = "MagicWand";
-            r.tabPane.innerHTML = addon.innerHTML;
+            r.tabPane.innerHTML = addon;
             loadWMEMagicWandSettings().then(() => {
                 populateLandmarks();
                 $("#mw-ScriptEnabled").on("click", (e) => {
@@ -159,27 +173,29 @@ function magicwand() {
                 });
                 document.getElementById("mw-ScriptEnabled").checked = MWSettings._enabled;
             });
+            // UI listeners
+            $(".mw-common-process-click").on("click", function (e) {
+                let status;
+                let bgColor;
+                let btnText;
+                if (MWSettings._enabled) {
+                    if (!magicwand_processing_allowed) {
+                        bgColor = "red";
+                        btnText = "STOP MAGIC WAND";
+                        status = "Waiting for click";
+                    }
+                    else {
+                        bgColor = "green";
+                        btnText = "START MAGIC WAND";
+                        status = "Disabled";
+                    }
+                    magicwand_processing_allowed = !magicwand_processing_allowed;
+                    $(this).css("background-color", bgColor);
+                    $(this).text(btnText);
+                    updateStatus(status);
+                }
+            });
         });
-        // UI listeners
-        $("#_bMagicWandProcessClick").on("click", () => {
-            let status;
-            let bgColor;
-            let btnText;
-            if (MWSettings._enabled) {
-                bgColor = "red";
-                btnText = "STOP MAGIC WAND";
-                status = "Waiting for click";
-            }
-            else {
-                bgColor = "green";
-                btnText = "START MAGIC WAND";
-                status = "Disabled";
-            }
-            $(this).css("background-color", bgColor);
-            $(this).val(btnText);
-            updateStatus(status);
-        });
-        $("#_bMagicWandProcessClick").trigger("click");
         // Event listeners
         // window.addEventListener("beforeunload", saveWMEMagicWandOptions, false);
         // Hotkeys
@@ -233,7 +249,7 @@ function magicwand() {
         // W.accelerators._registerShortcuts(key_map);
     }
     function saveWMEMagicWandOptions() {
-        const currentTime = new Date().getTime();
+        const currentTime = Date.now();
         if (localStorage && currentTime - lastSaveTime > 5000 /* Check if last Save was more than 5 seconds ago */) {
             console.log("WME MagicWand: saving options");
             localStorage.setItem("WMEMagicWandScript", JSON.stringify(MWSettings));
@@ -250,14 +266,15 @@ function magicwand() {
         for (const mark of venues) {
             // const mark: Venue = venues[i];
             // const SelectedLandmark = W.model.venues.get(mark);
+            const SelectedLandmark = sdk.DataModel.Venues.getById({ venueId: mark.id });
             if (mark.geometry.type === "Point") {
                 continue;
             }
-            const poly = document.getElementById(SelectedLandmark.geometry.id);
+            const poly = document.getElementById(SelectedLandmark?.geometry.id);
             const editingSelection = sdk.Editing.getSelection();
             // check that WME hasn't highlighted this object already
             if (!editingSelection ||
-                mark.state === "Update" ||
+                mark.venueUpdateRequests.length > 0 ||
                 editingSelection.objectType !== "venue" ||
                 mark.id !== editingSelection.ids[0]) {
                 continue;
@@ -272,7 +289,7 @@ function magicwand() {
             }
             // flag this venue as highlighted so we don't update it next time
             poly.setAttribute("stroke-opacity", 0.987);
-            const geom = SelectedLandmark.geometry.clone();
+            const geom = SelectedLandmark?.geometry;
             components = geom.components[0].components;
             functor = new OrthogonalizeId(components);
             newWay = functor.action();
@@ -619,11 +636,10 @@ function magicwand() {
             eventName: "wme-map-mouse-up",
             eventHandler(pixel) {
                 try {
-                    if (!MWSettings._enabled || magic_wand_process) {
+                    if (!MWSettings._enabled || !magicwand_processing_allowed || magic_wand_process) {
                         return;
                     }
                     magic_wand_process = true;
-                    $("#_bMagicWandProcessClick").attr("disabled", "disabled");
                     // Get current active layer to process
                     layer = null;
                     const is_imagery_enabled = W.layerSwitcherController.getTogglerState("ITEM_SATELLITE_IMAGERY");
@@ -696,14 +712,14 @@ function magicwand() {
                                 // Click position on div image
                                 clientX = pixel.x;
                                 clientY = pixel.y;
-                                offsetX = $(tile.imgDiv).offset().left;
-                                offsetY = $(tile.imgDiv).offset().top;
+                                offsetX = $(tile.imgDiv).position().left;
+                                offsetY = $(tile.imgDiv).position().top;
                                 imageX = clientX - offsetX;
                                 imageY = clientY - offsetY;
                                 clickCanvasX = tile_size.w * tilei + imageX;
                                 clickCanvasY = tile_size.h * tilerow + imageY;
-                                viewOffsetX = pixel.x - clickCanvasX;
-                                viewOffsetY = pixel.y - clickCanvasY;
+                                viewOffsetX = pixel.viewportX - clickCanvasX;
+                                viewOffsetY = pixel.viewportY - clickCanvasY;
                             }
                             // No need to reload tiles
                             if (!is_reload_tiles &&
@@ -795,7 +811,6 @@ function magicwand() {
             ];
         }
         function process() {
-            const settings = {};
             let canvas_data = context?.getImageData(0, 0, canvas.width, canvas.height, {}).data;
             const ref_pixel = getPixelInfo(canvas_data, clickCanvasX, clickCanvasY);
             const draw_canvas_context = draw_canvas.getContext("2d");
@@ -905,7 +920,6 @@ function magicwand() {
         }
         function resetProcessState(status_msg = null) {
             status_msg = !status_msg ? "Waiting for click" : status_msg;
-            $("#_bMagicWandProcessClick").removeAttr("disabled");
             updateStatus(status_msg);
         }
         function colorDistance(c_pixel, ref_pixel) {
