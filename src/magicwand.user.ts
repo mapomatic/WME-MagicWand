@@ -2,8 +2,8 @@
 // @name                WME MagicWand
 // @namespace           http://en.advisor.travel/wme-magic-wand
 // @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it
-// @include             /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor.*$/
-// @version             2.4
+// @include             https://beta.waze.com/*
+// @version             2025.07.16.001
 // @grant               none
 // @require             https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js
 // @require             https://cdn.jsdelivr.net/npm/proj4@2.16.2/dist/proj4.min.js
@@ -26,6 +26,7 @@
 
 /**
  * Contributors: justins83, MapOMatic (2023-?)
+ * Karlsosha (2025-)
  */
 
 /* global W */
@@ -74,6 +75,17 @@ function magicwand() {
     let magic_wand_process = false;
     let magicwand_processing_allowed = false;
 
+    const MW_VERSION = `${GM_info.script.version}`;
+    const GF_LINK = "https://greasyfork.org/en/scripts/398965-wme-magicwand";
+    const DOWNLOAD_URL = "https://greasyfork.org/en/scripts/398965-wme-magicwand";
+    const FORUM_LINK = "https://www.waze.com/discuss/t/script-wme-magicwand/73830";
+    const MW_UPDATE_NOTES = `
+<H1>BETA VERSION</H1>
+    -<b>WME MagicWand</b> is currently in BETA testing phase.<br>
+    -<b>DO NOT USE IT ON PRODUCTION WME</b>.<br><br>
+NEW:<br>
+    - Conversion to WME SDK<br>
+`;
     /* helper function */
     function getElClass(classname: string, node) {
         if (!node) node = document.getElementsByTagName("body")[0];
@@ -89,8 +101,24 @@ function magicwand() {
     }
 
     /* =========================================================================== */
+    function startScriptUpdateMonitor() {
+        try {
+            const updateMonitor = new WazeWrap.Alerts.ScriptUpdateMonitor(
+                GM_info.script.name,
+                GM_info.script.version,
+                DOWNLOAD_URL,
+                GM_xmlhttpRequest,
+                DOWNLOAD_URL
+            );
+            updateMonitor.start();
+        } catch (ex) {
+            // Report, but don't stop if ScriptUpdateMonitor fails.
+            console.error("WME LaneTools:", ex);
+        }
+    }
 
     async function initializeMagicWand() {
+        startScriptUpdateMonitor();
         const userInfo = getElId("user-info");
         const userTabs = getElId("user-tabs");
 
@@ -231,6 +259,13 @@ function magicwand() {
         // Hotkeys
         registerKeyShortcut("WMEMagicWand_HighlightLandmark", "Highlight Landmarks", highlightLandmarks, "C+k");
 
+        WazeWrap.Interface.ShowScriptUpdate(
+            GM_info.script.name,
+            GM_info.script.version,
+            MW_UPDATE_NOTES,
+            GF_LINK,
+            FORUM_LINK
+        );
         // Start extension
         WMELandmarkMagicWand();
     }
@@ -703,8 +738,8 @@ function magicwand() {
         let total_tiles: number;
         let clickCanvasX: number;
         let clickCanvasY: number;
-        let viewOffsetX;
-        let viewOffsetY;
+        let viewOffsetX: number;
+        let viewOffsetY: number;
         let context: CanvasRenderingContext2D | null;
 
         let color_sensitivity: number;
@@ -923,12 +958,12 @@ function magicwand() {
             }
         }
 
-        function getPixelInfo(canvas_data, x, y) {
+        function getPixelInfo(canvas_data: Uint8ClampedArray<ArrayBufferLike>, x: number, y: number) {
             const offset = (y * canvas.width + x) * 4;
             return [canvas_data[offset], canvas_data[offset + 1], canvas_data[offset + 2], canvas_data[offset + 3]];
         }
 
-        function getPixelAverageSample(canvas_data, x, y) {
+        function getPixelAverageSample(canvas_data: Uint8ClampedArray<ArrayBufferLike>, x: number, y: number) {
             let sample_info;
             const average = [0, 0, 0, 0];
             let total_samples = 0;
@@ -958,6 +993,10 @@ function magicwand() {
 
         function process() {
             let canvas_data = context?.getImageData(0, 0, canvas.width, canvas.height, {}).data;
+            if (!canvas_data) {
+                resetProcessState("Canvas data is not available");
+                return;
+            }
             const ref_pixel = getPixelInfo(canvas_data, clickCanvasX, clickCanvasY);
 
             const draw_canvas_context = draw_canvas.getContext("2d");
@@ -987,7 +1026,11 @@ function magicwand() {
             updateStatus("Processing tiles image");
 
             const id = draw_canvas_context?.createImageData(1, 1);
-            const d = id?.data;
+            const d: Uint8ClampedArray<ArrayBufferLike> | undefined = id?.data;
+            if (!d) {
+                resetProcessState("Canvas data is not available");
+                return;
+            }
             d[0] = 255;
             d[1] = 0;
             d[2] = 0;
@@ -1029,15 +1072,15 @@ function magicwand() {
                     polyPixels.push([viewX, viewY]);
                 } else {
                     // Inner point, add neighboring points to the stack
-                    if (typeof processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]}`] === "undefined") {
+                    if (!processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]}`]) {
                         stack.push([current_pixel[0] - 1, current_pixel[1]]);
                     }
 
-                    if (typeof processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}`] === "undefined") {
+                    if (!processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}`]) {
                         stack.push([current_pixel[0] + 1, current_pixel[1]]);
                     }
 
-                    if (typeof processed_pixels[`${current_pixel[0]},${current_pixel[1]}` - 1] === "undefined") {
+                    if (processed_pixels[`${current_pixel[0]},${current_pixel[1]}` - 1]) {
                         stack.push([current_pixel[0], current_pixel[1] - 1]);
                     }
 
@@ -1278,30 +1321,31 @@ function magicwand() {
         }
 
         // grid.js
-        function Grid(points, cellSize) {
-            this._cells = [];
-            this._cellSize = cellSize;
+        class Grid{
+            private _cellSize: any;
+            private _cells: never[];
 
-            points.forEach(function gridPoint(this: any, point: any) {
-                const cellXY = this.point2CellXY(point);
-                const x = cellXY[0];
-                const y = cellXY[1];
-                if (this._cells[x] === undefined) {
-                    this._cells[x] = [];
-                }
-                if (this._cells[x][y] === undefined) {
-                    this._cells[x][y] = [];
-                }
-                this._cells[x][y].push(point);
-            }, this);
-        }
+            constructor(points, cellSize) {
+                this._cells = [];
+                this._cellSize = cellSize;
 
-        Grid.prototype = {
+                points.forEach(function gridPoint(this: any, point: any) {
+                    const cellXY = this.point2CellXY(point);
+                    const x = cellXY[0];
+                    const y = cellXY[1];
+                    if (this._cells[x] === undefined) {
+                        this._cells[x] = [];
+                    }
+                    if (this._cells[x][y] === undefined) {
+                        this._cells[x][y] = [];
+                    }
+                    this._cells[x][y].push(point);
+                }, this);
+            };
             cellPoints(x: string | number, y: string | number) {
                 // (Number, Number) -> Array
                 return this._cells[x] !== undefined && this._cells[x][y] !== undefined ? this._cells[x][y] : [];
-            },
-
+            };
             rangePoints(bbox: GeoJSON.BBox) {
                 // (Array) -> Array
                 const tlCellXY = this.point2CellXY([bbox[0], bbox[1]]);
@@ -1315,8 +1359,7 @@ function magicwand() {
                 }
 
                 return points;
-            },
-
+            };
             removePoint(point) {
                 // (Array) -> Array
                 const cellXY = this.point2CellXY(point);
@@ -1333,15 +1376,13 @@ function magicwand() {
                 cell.splice(pointIdxInCell, 1);
 
                 return cell;
-            },
-
+            };
             point2CellXY(point: Position): Position {
                 // (Array) -> Array
                 const x = Number.parseInt(point[0] / this._cellSize, 10);
                 const y = Number.parseInt(point[1] / this._cellSize, 10);
                 return [x, y];
-            },
-
+            }
             extendBbox(bbox, scaleFactor) {
                 // (Array, Number) -> Array
                 return [
@@ -1350,7 +1391,7 @@ function magicwand() {
                     bbox[2] + scaleFactor * this._cellSize,
                     bbox[3] + scaleFactor * this._cellSize,
                 ];
-            },
+            }
         };
 
         function grid(points, cellSize) {
