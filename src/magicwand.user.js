@@ -1,5 +1,6 @@
 "use strict";
 // ==UserScript==
+/** biome-ignore-all assist/source/organizeImports: <explanation> */
 // @name                WME MagicWand
 // @namespace           http://en.advisor.travel/wme-magic-wand
 // @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it
@@ -29,7 +30,7 @@
  */
 /* global W */
 // import * as turf from "@turf/turf";
-// import  type { WmeSDK, Venue, VenueCategory, VenueCategoryId, SelectionWithLocalizedTypeName } from "wme-sdk-typings";
+// import type { WmeSDK, Venue, VenueCategory, VenueCategoryId, SelectionWithLocalizedTypeName } from "wme-sdk-typings";
 // import proj4 from "proj4";
 // import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
 let sdk;
@@ -84,7 +85,7 @@ NEW:<br>
     /* =========================================================================== */
     function startScriptUpdateMonitor() {
         try {
-            const updateMonitor = new WazeWrap.Alerts.ScriptUpdateMonitor(GM_info.script.name, GM_info.script.version, DOWNLOAD_URL, GM_xmlhttpRequest, DOWNLOAD_URL);
+            const updateMonitor = new WazeWrap.Alerts.ScriptUpdateMonitor(GM_info.script.name, MW_VERSION, DOWNLOAD_URL, GM_xmlhttpRequest, DOWNLOAD_URL);
             updateMonitor.start();
         }
         catch (ex) {
@@ -94,17 +95,18 @@ NEW:<br>
     }
     async function initializeMagicWand() {
         startScriptUpdateMonitor();
-        const userInfo = getElId("user-info");
+        // const userInfo = getElId("user-info");
         const userTabs = getElId("user-tabs");
         if (!getElClass("nav-tabs", userTabs)[0]) {
             setTimeout(initializeMagicWand, 1000);
             return;
         }
-        const navTabs = getElClass("nav-tabs", userTabs)[0];
-        const tabContent = getElClass("tab-content", userInfo)[0];
+        // const navTabs = getElClass("nav-tabs", userTabs)[0];
+        // const tabContent = getElClass("tab-content", userInfo)[0];
         console.log("WME MagicWand init");
         // add new box to left of the map
-        const addon = [`
+        const addon = [
+            `
             <div class='mw-header' style='display:block;'>
                 <label class='mw-header mw-header-script-name' style='font-weight:bold'><span>WME Magic Wand</span></label>
                 <span class="mw-header mw-header-version">v${GM_info.script.version}</span>
@@ -179,7 +181,8 @@ NEW:<br>
                     </table>
                 </div>
             </div>
-        `].join(" ");
+        `,
+        ].join(" ");
         // const newtab = document.createElement("li");
         // newtab.innerHTML = '<a href="#sidepanel-magicwand" data-toggle="tab">MagicWand</a>';
         // navTabs.appendChild(newtab);
@@ -290,11 +293,13 @@ NEW:<br>
         for (const mark of venues) {
             // const mark: Venue = venues[i];
             // const SelectedLandmark = W.model.venues.get(mark);
-            const SelectedLandmark = sdk.DataModel.Venues.getById({ venueId: mark.id });
             if (mark.geometry.type === "Point") {
                 continue;
             }
-            const poly = document.getElementById(SelectedLandmark?.geometry.id);
+            const SelectedLandmark = sdk.DataModel.Venues.getById({ venueId: mark.id });
+            if (!SelectedLandmark || SelectedLandmark.geometry.type === "Point") {
+                continue;
+            }
             const editingSelection = sdk.Editing.getSelection();
             // check that WME hasn't highlighted this object already
             if (!editingSelection ||
@@ -304,19 +309,16 @@ NEW:<br>
                 continue;
             }
             // if already highlighted by us or by WME Color Hightlight, avoid conflict and skip
-            if (poly.getAttribute("stroke-opacity") === 0.987) {
+            if (poly && poly.getAttribute("stroke-opacity") === "0.987") {
                 continue;
             }
             // if highlighted by mouse over, skip this one
-            if (poly.getAttribute("fill") === poly.getAttribute("stroke")) {
+            if (poly && poly.getAttribute("fill") === poly.getAttribute("stroke")) {
                 continue;
             }
             // flag this venue as highlighted so we don't update it next time
             poly.setAttribute("stroke-opacity", 0.987);
-            const geom = SelectedLandmark?.geometry;
-            components = geom.components[0].components;
-            functor = new OrthogonalizeId(components);
-            newWay = functor.action();
+            const newWay = OrthogonalizeId(SelectedLandmark?.geometry.coordinates);
             for (let j = 0; j < newWay.length; j++) {
                 if (newWay[j] === false ||
                     Math.abs(SelectedLandmark.geometry.components[0].components[j].x - newWay[j].x) > 2 ||
@@ -329,8 +331,7 @@ NEW:<br>
     };
     // WME Color Highlights by Timbones
     function highlightAPlace(venue, fg, bg) {
-        const poly = document.getElementById(venue.geometry.id);
-        if (venue.isPoint()) {
+        if (venue.geometry.type !== "Polygon") {
             poly.setAttribute("fill", fg);
         }
         else {
@@ -416,184 +417,156 @@ NEW:<br>
             return [this.x, this.y];
         }
     }
-    class OrthogonalizeId {
-        threshold = getElId("_cMagicWandAngleThreshold")?.value
-            ? Number.parseFloat(getElId("_cMagicWandAngleThreshold")?.value)
-            : 0; // degrees within right or straight to alter
-        lowerThreshold = Math.cos((90 - this.threshold) * (Math.PI / 180));
-        upperThreshold = Math.cos(this.threshold * (Math.PI / 180));
-        way;
-        static magicZero = new MagicPoint([0, 0]);
-        constructor(way) {
-            this.way = way;
-        }
-        action() {
-            const nodes = this.way;
-            let points = nodes.slice(0, nodes.length - 1).map((n) => {
-                const t = n.clone();
-                const p = new MagicPoint(proj4("EPSG:900913", "EPSG:4326", t.toPosition()));
-                p.y = lat2latp(p.y);
+    const OrthogonalizeId = (geometry, threshold = 12) => {
+        const nomthreshold = threshold, // degrees within right or straight to alter
+        lowerThreshold = Math.cos(((90 - nomthreshold) * Math.PI) / 180), upperThreshold = Math.cos((nomthreshold * Math.PI) / 180);
+        function Orthogonalize() {
+            if (!geometry || geometry.length === 0) {
+                return [];
+            }
+            let nodes = structuredClone(geometry[0]), points = nodes.slice(0, -1).map((n) => {
+                const p = [...n];
+                p[1] = lat2latp(p[1]);
                 return p;
-            });
-            const corner = { i: 0, dotp: 1 };
-            const epsilon = 1e-4;
+            }), corner = { i: 0, dotp: 1 }, epsilon = 1e-4, motions = [], score = 0;
             // Triangle
-            if (nodes.length === 4) {
+            if (points.length === 4) {
                 for (let i = 0; i < 1000; i++) {
                     motions = points.map(calcMotion);
-                    const tmp = this.addPoints(points[corner.i], motions[corner.i]);
-                    points[corner.i].x = tmp.x;
-                    points[corner.i].y = tmp.y;
+                    const tmp = addPoints(points[corner.i], motions[corner.i]);
+                    points[corner.i][0] = tmp[0];
+                    points[corner.i][1] = tmp[1];
                     score = corner.dotp;
-                    if (score < epsilon) {
+                    if (score < epsilon)
                         break;
-                    }
                 }
                 const n = points[corner.i];
-                n.y = latp2lat(n.y);
-                const pp = new MagicPoint(proj4("EPSG:4326", "EPSG:900913", n.toPosition()));
-                const { id } = nodes[corner.i];
+                n[1] = latp2lat(n[1]);
+                const pp = n;
+                const id = nodes[corner.i].toString();
                 for (let i = 0; i < nodes.length; i++) {
-                    if (nodes[i].id !== id) {
+                    if (nodes[i].toString() !== id)
                         continue;
-                    }
-                    nodes[i].x = pp.x;
-                    nodes[i].y = pp.y;
+                    nodes[i][0] = pp[0];
+                    nodes[i][1] = pp[1];
                 }
                 return nodes;
             }
-            const originalPoints = nodes.slice(0, nodes.length - 1).map((n) => {
-                const t = n.clone();
-                const p = new MagicPoint(proj4("EPSG:900913", "EPSG:4326", t));
-                p.y = lat2latp(p.y);
+            const originalPoints = nodes.slice(0, -1).map((n) => {
+                const p = [...n];
+                p[1] = lat2latp(p[1]);
                 return p;
             });
             score = Number.POSITIVE_INFINITY;
-            for (let i = 0; i < 1000; i++) {
+            for (let i = 0; i < 1000 && !(score < epsilon); i++) {
                 motions = points.map(calcMotion);
-                for (j = 0; j < motions.length; j++) {
-                    const tmp = this.addPoints(points[j], motions[j]);
-                    points[j].x = tmp.x;
-                    points[j].y = tmp.y;
+                for (let j = 0; j < motions.length; j++) {
+                    const tmp = addPoints(points[j], motions[j]);
+                    points[j][0] = tmp[0];
+                    points[j][1] = tmp[1];
                 }
-                const newScore = this.squareness(points);
+                const newScore = squareness(points);
                 if (newScore < score) {
-                    best = [].concat(points);
+                    // best = [].concat(points);
                     score = newScore;
                 }
-                if (score < epsilon) {
-                    break;
-                }
+                // if (score < epsilon)
+                //     break;
             }
-            points = best;
+            // points = best;
             for (let i = 0; i < points.length; i++) {
                 // only move the points that actually moved
-                if (originalPoints[i].x !== points[i].x || originalPoints[i].y !== points[i].y) {
+                if (originalPoints[i][0] !== points[i][0] || originalPoints[i][1] !== points[i][1]) {
                     const n = points[i];
-                    n.y = latp2lat(n.y);
-                    const pp = new MagicPoint(proj4("EPSG:4326", "EPSG:900913", n.toPosition()));
-                    const { id } = nodes[i];
-                    for (j = 0; j < nodes.length; j++) {
-                        if (nodes[j].id !== id) {
+                    n[1] = latp2lat(n[1]);
+                    const pp = n;
+                    const id = nodes[i].toString();
+                    for (let j = 0; j < nodes.length; j++) {
+                        if (nodes[j].toString() !== id)
                             continue;
-                        }
-                        nodes[j].x = pp.x;
-                        nodes[j].y = pp.y;
+                        nodes[j][0] = pp[0];
+                        nodes[j][1] = pp[1];
                     }
                 }
             }
             // remove empty nodes on straight sections
-            for (i = 0; i < points.length; i++) {
-                const dotp = this.normalizedDotProduct(i, points);
+            for (let i = 0; i < points.length; i++) {
+                const dotp = normalizedDotProduct(i, points);
                 if (dotp < -1 + epsilon) {
-                    const id = nodes[i].id;
-                    for (j = 0; j < nodes.length; j++) {
-                        if (nodes[j].id !== id) {
+                    const id = nodes[i].toString();
+                    for (let j = 0; j < nodes.length; j++) {
+                        if (nodes[j].toString() !== id)
                             continue;
-                        }
-                        nodes[j] = false;
+                        nodes[j] = [];
                     }
                 }
             }
-            return nodes;
-            function calcMotion(b, k, array) {
-                const a = array[(k - 1 + array.length) % array.length];
-                const c = array[(k + 1) % array.length];
-                let p = MagicPoint.subtractPoints(a, b);
-                let q = MagicPoint.subtractPoints(c, b);
-                const scale = 2 *
-                    Math.min(this.euclideanDistance(p, OrthogonalizeId.magicZero, this.euclideanDistance(q, OrthogonalizeId.magicZero)));
+            return nodes.filter((item) => item.length > 0);
+            function calcMotion(b, i, array) {
+                let a = array[(i - 1 + array.length) % array.length], c = array[(i + 1) % array.length], p = subtractPoints(a, b), q = subtractPoints(c, b);
+                const scale = 2 * Math.min(euclideanDistance(p, [0, 0]), euclideanDistance(q, [0, 0]));
                 p = normalizePoint(p, 1.0);
                 q = normalizePoint(q, 1.0);
-                let dotp = filterDotProduct(p.x * q.x + p.y * q.y);
+                let dotp = filterDotProduct(p[0] * q[0] + p[1] * q[1]);
                 // nasty hack to deal with almost-straight segments (angle is closer to 180 than to 90/270).
                 if (array.length > 3) {
-                    if (dotp < -0.707106781186547) {
+                    if (dotp < -Math.SQRT1_2)
                         dotp += 1.0;
-                    }
                 }
                 else if (dotp && Math.abs(dotp) < corner.dotp) {
-                    corner.i = k;
+                    corner.i = i;
                     corner.dotp = Math.abs(dotp);
                 }
-                return normalizePoint(this.addPoints(p, q), 0.1 * dotp * scale);
+                return normalizePoint(addPoints(p, q), 0.1 * dotp * scale);
             }
         }
-        squareness(points) {
-            return points.reduce((sum, val, i, array) => {
-                let dotp = this.normalizedDotProduct(i, array);
-                dotp = this.filterDotProduct(dotp);
+        function lat2latp(lat) {
+            return (180 / Math.PI) * Math.log(Math.tan(Math.PI / 4 + (lat * (Math.PI / 180)) / 2));
+        }
+        function latp2lat(a) {
+            return (180 / Math.PI) * (2 * Math.atan(Math.exp((a * Math.PI) / 180)) - Math.PI / 2);
+        }
+        function squareness(points) {
+            return points.reduce((sum, _val, i, array) => {
+                let dotp = normalizedDotProduct(i, array);
+                dotp = filterDotProduct(dotp);
                 return sum + 2.0 * Math.min(Math.abs(dotp - 1.0), Math.min(Math.abs(dotp), Math.abs(dotp + 1)));
             }, 0);
         }
-        normalizedDotProduct(i, points) {
-            const a = points[(i - 1 + points.length) % points.length];
-            const b = points[i];
-            const c = points[(i + 1) % points.length];
-            let p = this.subtractPoints(a, b);
-            let q = this.subtractPoints(c, b);
-            p = this.normalizePoint(p, 1.0);
-            q = this.normalizePoint(q, 1.0);
-            return p.x * q.x + p.y * q.y;
+        function normalizedDotProduct(i, points) {
+            let a = points[(i - 1 + points.length) % points.length], b = points[i], c = points[(i + 1) % points.length], p = subtractPoints(a, b), q = subtractPoints(c, b);
+            p = normalizePoint(p, 1.0);
+            q = normalizePoint(q, 1.0);
+            return p[0] * q[0] + p[1] * q[1];
         }
-        subtractPoints(a, b) {
-            return { x: a.x - b.x, y: a.y - b.y };
+        function subtractPoints(a, b) {
+            return [a[0] - b[0], a[1] - b[1]];
         }
-        addPoints(a, b) {
-            return { x: a.x + b.x, y: a.y + b.y };
+        function addPoints(a, b) {
+            return [a[0] + b[0], a[1] + b[1]];
         }
-        euclideanDistance(a, b) {
-            const x = a.x - b.x;
-            const y = a.y - b.y;
+        function euclideanDistance(a, b) {
+            const x = a[0] - b[0], y = a[1] - b[1];
             return Math.sqrt(x * x + y * y);
         }
-        normalizePoint(point, scale) {
-            const vector = new MagicPoint([0, 0]);
-            const length = Math.sqrt(point.x * point.x + point.y * point.y);
+        function normalizePoint(point, scale) {
+            const vector = [0, 0];
+            const length = Math.sqrt(point[0] * point[0] + point[1] * point[1]);
             if (length !== 0) {
-                vector.x = point.x / length;
-                vector.y = point.y / length;
+                vector[0] = point[0] / length;
+                vector[1] = point[1] / length;
             }
-            vector.x *= scale;
-            vector.y *= scale;
+            vector[0] *= scale;
+            vector[1] *= scale;
             return vector;
         }
-        filterDotProduct(dotp) {
-            if (this.lowerThreshold > Math.abs(dotp) || Math.abs(dotp) > this.upperThreshold) {
+        function filterDotProduct(dotp) {
+            if (lowerThreshold > Math.abs(dotp) || Math.abs(dotp) > upperThreshold)
                 return dotp;
-            }
             return 0;
         }
-        isDisabled(nodes) {
-            const points = nodes.slice(0, nodes.length - 1).map((n) => {
-                const p = n
-                    .toLonLat()
-                    .transform(new OpenLayers.Projection("EPSG:900913"), new OpenLayers.Projection("EPSG:4326"));
-                return { x: p.lat, y: p.lon };
-            });
-            return this.squareness(points);
-        }
-    }
+        return Orthogonalize();
+    };
     function updateStatus(status) {
         $("#_sMagicWandStatus").html(status);
         $("#magicwand_common").hide().show();
@@ -614,12 +587,6 @@ NEW:<br>
             usrOption.appendChild(usrText);
             landmarkTypes.appendChild(usrOption);
         }
-    }
-    function lat2latp(lat) {
-        return (180 / Math.PI) * Math.log(Math.tan(Math.PI / 4 + lat * (Math.PI / 180 / 2)));
-    }
-    function latp2lat(a) {
-        return (180 / Math.PI) * (2 * Math.atan(Math.exp(a * (Math.PI / 180))) - Math.PI / 2);
     }
     function WMELandmarkMagicWand() {
         const MAX_CONCAVE_ANGLE_COS = Math.cos(90 / (180 / Math.PI)); // angle = 90 deg
@@ -692,9 +659,9 @@ NEW:<br>
                     const olProj = proj4("EPSG:4326", "EPSG:3857", [LatLon.lon, LatLon.lat]);
                     const olLatLon = {
                         lon: olProj[0],
-                        lat: olProj[1]
+                        lat: olProj[1],
                     };
-                    const pt = turf.point([LatLon.lon, LatLon.lat]);
+                    // const pt: GeoJSON.Point = turf.point([LatLon.lon, LatLon.lat]);
                     // const olLatLon = W.userscripts.toOLGeometry(pt);
                     // LatLon = { lon: olLatLon.x, lat: olLatLon.y };
                     const tile_size = layer.grid[0][0].size;
@@ -850,7 +817,7 @@ NEW:<br>
             const polyPixels = [];
             let g = 0;
             let minX = Number.MAX_VALUE;
-            let first_pixel = null;
+            let first_pixel;
             const stack = [[clickCanvasX, clickCanvasY]];
             let x;
             let y;
@@ -871,6 +838,9 @@ NEW:<br>
             while (stack.length > 0 && g < 1500000) {
                 g++;
                 current_pixel = stack.pop();
+                if (!current_pixel) {
+                    continue;
+                }
                 // Already processed before
                 if (processed_pixels[`${current_pixel[0]},${current_pixel[1]}`]) {
                     continue;
@@ -893,7 +863,7 @@ NEW:<br>
                         minX = viewX;
                         first_pixel = [viewX, viewY];
                     }
-                    else if (viewX === minX && viewY < first_pixel[1]) {
+                    else if (viewX === minX && first_pixel !== undefined && viewY < first_pixel[1]) {
                         first_pixel = [viewX, viewY];
                     }
                     // Outer pixel found
@@ -907,39 +877,38 @@ NEW:<br>
                     if (!processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}`]) {
                         stack.push([current_pixel[0] + 1, current_pixel[1]]);
                     }
-                    if (processed_pixels[`${current_pixel[0]},${current_pixel[1]}` - 1]) {
+                    if (processed_pixels[`${current_pixel[0]},${current_pixel[1]} - 1`]) {
                         stack.push([current_pixel[0], current_pixel[1] - 1]);
                     }
-                    if (typeof processed_pixels[`${current_pixel[0]},${current_pixel[1]}${1}`] === "undefined") {
+                    if (processed_pixels[`${current_pixel[0]},${current_pixel[1]}${1}`] === undefined) {
                         stack.push([current_pixel[0], current_pixel[1] + 1]);
                     }
                     // Experimental: with diagonal pixels
-                    if (typeof processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}${1}`] === "undefined") {
+                    if (processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}${1}`] === undefined) {
                         stack.push([current_pixel[0], current_pixel[1] + 1]);
                     }
-                    if (typeof processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}` - 1] === "undefined") {
+                    if (processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]} - 1`] === undefined) {
                         stack.push([current_pixel[0], current_pixel[1] + 1]);
                     }
-                    if (typeof processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]}${1}`] === "undefined") {
+                    if (processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]}${1}`] === undefined) {
                         stack.push([current_pixel[0], current_pixel[1] + 1]);
                     }
-                    if (typeof processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]}` - 1] === "undefined") {
+                    if (processed_pixels[`${current_pixel[0] - 1},${current_pixel[1] - 1}`] === undefined) {
                         stack.push([current_pixel[0], current_pixel[1] + 1]);
                     }
                 }
             }
             // Clear unnecessary data
-            processed_pixels = [];
+            processed_pixels = {};
             current_pixel = [];
             canvas_data = [];
-            let points;
+            let points = [];
             if (polyPixels.length > 2) {
                 updateStatus("Computing convex hull");
-                points = [];
                 for (let j = 0; j < polyPixels.length; j++) {
                     points.push(new MagicPoint([polyPixels[j][0], polyPixels[j][1]]));
                 }
-                const convolutionHull = hull(points, 40, [".x", ".y"]);
+                const convolutionHull = hull(points, 40, true);
                 createLandmark(convolutionHull /* , simplify_param */);
             }
             else {
@@ -961,11 +930,19 @@ NEW:<br>
                 Math.abs(c_pixel[3] - ref_pixel[3]) <= color_sensitivity);
         }
         function createLandmark(points /* , simplify */) {
-            const polyPoints = [];
-            for (let k = 0; k < points.length; k++) {
-                const o = points[k];
-                const point_lonlat = sdk.Map.getLonLatFromPixel(o);
-                polyPoints.push([point_lonlat.lon, point_lonlat.lat]);
+            if (points.length < 3) {
+                resetProcessState("Please, try again, not enough points found");
+                return;
+            }
+            const polyPoints = points.map((p) => {
+                if (p instanceof MagicPoint)
+                    return p.toPosition();
+                return p;
+            });
+            for (let k = 0; k < polyPoints.length; k++) {
+                const o = polyPoints[k];
+                const point_lonlat = sdk.Map.getLonLatFromPixel({ x: o[0], y: o[1] });
+                polyPoints[k] = [point_lonlat.lon, point_lonlat.lat];
             }
             // const LineString = new OpenLayers.Geometry.LineString(polyPoints);
             // if (simplify > 0) {
@@ -1057,9 +1034,9 @@ NEW:<br>
             return l;
         }
         // Finally, use cie1994 to get delta-e using LAB
-        function cie1994(x, y, isTextiles) {
-            x = { l: x[0], a: x[1], b: x[2] };
-            y = { l: y[0], a: y[1], b: y[2] };
+        function cie1994(pointX, pointY, isTextiles) {
+            const x = { l: pointX[0], a: pointX[1], b: pointX[2] };
+            const y = { l: pointY[0], a: pointY[1], b: pointY[2] };
             let k2;
             let k1;
             let kl;
@@ -1124,12 +1101,10 @@ NEW:<br>
                     this._cells[x][y].push(point);
                 }, this);
             }
-            ;
             cellPoints(x, y) {
                 // (Number, Number) -> Array
                 return this._cells[x] !== undefined && this._cells[x][y] !== undefined ? this._cells[x][y] : [];
             }
-            ;
             rangePoints(bbox) {
                 // (Array) -> Array
                 const tlCellXY = this.point2CellXY([bbox[0], bbox[1]]);
@@ -1142,7 +1117,6 @@ NEW:<br>
                 }
                 return points;
             }
-            ;
             removePoint(point) {
                 // (Array) -> Array
                 const cellXY = this.point2CellXY(point);
@@ -1157,11 +1131,10 @@ NEW:<br>
                 cell.splice(pointIdxInCell, 1);
                 return cell;
             }
-            ;
             point2CellXY(point) {
                 // (Array) -> Array
-                const x = Number.parseInt(point[0] / this._cellSize, 10);
-                const y = Number.parseInt(point[1] / this._cellSize, 10);
+                const x = Math.floor(point[0] / this._cellSize);
+                const y = Math.floor(point[1] / this._cellSize);
                 return [x, y];
             }
             extendBbox(bbox, scaleFactor) {
@@ -1174,23 +1147,23 @@ NEW:<br>
                 ];
             }
         }
-        ;
         function grid(points, cellSize) {
             return new Grid(points, cellSize);
         }
         // format.js
         const formatUtil = {
-            toXy(pointset, format) {
-                if (format === undefined) {
+            toPosition(pointset, format = false) {
+                if (!format) {
                     return pointset.slice();
                 }
-                return pointset.map((pt) => [pt.x, pt.y]);
+                return pointset.map((pt) => { if (pt instanceof MagicPoint)
+                    return pt.toPosition(); return pt; });
             },
-            fromXy(pointset, format) {
+            toMagicPoint(pointset, format = false) {
                 if (format === undefined) {
                     return pointset.slice();
                 }
-                return pointset.map((pt) => ({ x: pt[0], y: pt[1] }));
+                return pointset.map((pt) => { return new MagicPoint(pt); });
             },
         };
         // convex.js
@@ -1361,12 +1334,12 @@ NEW:<br>
             }
             return convex1;
         }
-        function hull(pointset, concavity, format) {
+        function hull(pointset, concavity, format = false) {
             const maxEdgeLen = concavity || 20;
             if (pointset.length < 4) {
                 return pointset.slice();
             }
-            const points = _filterDuplicates(_sortByX(formatUtil.toXy(pointset, format)));
+            const points = _filterDuplicates(_sortByX(formatUtil.toPosition(pointset, format)));
             const occupiedArea = _occupiedArea(points);
             const maxSearchArea = [
                 occupiedArea[0] * MAX_SEARCH_BBOX_SIZE_PERCENT,
@@ -1376,7 +1349,7 @@ NEW:<br>
             const innerPoints = points.filter((pt) => convex1.indexOf(pt) < 0);
             const cellSize = Math.ceil(1 / (points.length / (occupiedArea[0] * occupiedArea[1])));
             const concave = _concave(convex1, maxEdgeLen ** 2, maxSearchArea, grid(innerPoints, cellSize), {});
-            return formatUtil.fromXy(concave, format);
+            return formatUtil.toMagicPoint(concave, format);
         }
     }
     initializeMagicWand();

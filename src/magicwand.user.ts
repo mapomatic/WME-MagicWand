@@ -1,4 +1,5 @@
 // ==UserScript==
+/** biome-ignore-all assist/source/organizeImports: <explanation> */
 // @name                WME MagicWand
 // @namespace           http://en.advisor.travel/wme-magic-wand
 // @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it
@@ -31,9 +32,8 @@
 
 /* global W */
 
-
 // import * as turf from "@turf/turf";
-// import  type { WmeSDK, Venue, VenueCategory, VenueCategoryId, SelectionWithLocalizedTypeName } from "wme-sdk-typings";
+// import type { WmeSDK, Venue, VenueCategory, VenueCategoryId, SelectionWithLocalizedTypeName } from "wme-sdk-typings";
 // import proj4 from "proj4";
 // import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
 
@@ -87,7 +87,7 @@ NEW:<br>
     - Conversion to WME SDK<br>
 `;
     /* helper function */
-    function getElClass(classname: string, node) {
+    function getElClass(classname: string, node: HTMLElement) {
         if (!node) node = document.getElementsByTagName("body")[0];
         const a = [];
         const re = new RegExp(`\\b${classname}\\b`);
@@ -105,7 +105,7 @@ NEW:<br>
         try {
             const updateMonitor = new WazeWrap.Alerts.ScriptUpdateMonitor(
                 GM_info.script.name,
-                GM_info.script.version,
+                MW_VERSION,
                 DOWNLOAD_URL,
                 GM_xmlhttpRequest,
                 DOWNLOAD_URL
@@ -119,7 +119,7 @@ NEW:<br>
 
     async function initializeMagicWand() {
         startScriptUpdateMonitor();
-        const userInfo = getElId("user-info");
+        // const userInfo = getElId("user-info");
         const userTabs = getElId("user-tabs");
 
         if (!getElClass("nav-tabs", userTabs)[0]) {
@@ -127,13 +127,14 @@ NEW:<br>
             return;
         }
 
-        const navTabs = getElClass("nav-tabs", userTabs)[0];
-        const tabContent = getElClass("tab-content", userInfo)[0];
+        // const navTabs = getElClass("nav-tabs", userTabs)[0];
+        // const tabContent = getElClass("tab-content", userInfo)[0];
 
         console.log("WME MagicWand init");
 
         // add new box to left of the map
-        const addon = [`
+        const addon = [
+            `
             <div class='mw-header' style='display:block;'>
                 <label class='mw-header mw-header-script-name' style='font-weight:bold'><span>WME Magic Wand</span></label>
                 <span class="mw-header mw-header-version">v${GM_info.script.version}</span>
@@ -208,7 +209,8 @@ NEW:<br>
                     </table>
                 </div>
             </div>
-        `].join(" ");
+        `,
+        ].join(" ");
 
         // const newtab = document.createElement("li");
         // newtab.innerHTML = '<a href="#sidepanel-magicwand" data-toggle="tab">MagicWand</a>';
@@ -232,7 +234,7 @@ NEW:<br>
                 let status: string;
                 let bgColor: string;
                 let btnText: string;
-                if(MWSettings._enabled) {
+                if (MWSettings._enabled) {
                     if (!magicwand_processing_allowed) {
                         bgColor = "red";
                         btnText = "STOP MAGIC WAND";
@@ -242,7 +244,7 @@ NEW:<br>
                         btnText = "START MAGIC WAND";
                         status = "Disabled";
                     }
-                
+
                     magicwand_processing_allowed = !magicwand_processing_allowed;
                     $(this).css("background-color", bgColor);
                     $(this).text(btnText);
@@ -250,8 +252,6 @@ NEW:<br>
                 }
             });
         });
-
-
 
         // Event listeners
         // window.addEventListener("beforeunload", saveWMEMagicWandOptions, false);
@@ -339,12 +339,14 @@ NEW:<br>
         for (const mark of venues) {
             // const mark: Venue = venues[i];
             // const SelectedLandmark = W.model.venues.get(mark);
-            const SelectedLandmark = sdk.DataModel.Venues.getById({venueId: mark.id});
             if (mark.geometry.type === "Point") {
                 continue;
             }
+            const SelectedLandmark = sdk.DataModel.Venues.getById({ venueId: mark.id });
+            if(!SelectedLandmark || SelectedLandmark.geometry.type === "Point") {
+                continue;
+            }
 
-            const poly = document.getElementById(SelectedLandmark?.geometry.id);
             const editingSelection: SelectionWithLocalizedTypeName | null = sdk.Editing.getSelection();
             // check that WME hasn't highlighted this object already
             if (
@@ -357,23 +359,19 @@ NEW:<br>
             }
 
             // if already highlighted by us or by WME Color Hightlight, avoid conflict and skip
-            if (poly.getAttribute("stroke-opacity") === 0.987) {
+            if (poly && poly.getAttribute("stroke-opacity") === "0.987") {
                 continue;
             }
 
             // if highlighted by mouse over, skip this one
-            if (poly.getAttribute("fill") === poly.getAttribute("stroke")) {
+            if (poly && poly.getAttribute("fill") === poly.getAttribute("stroke")) {
                 continue;
             }
 
             // flag this venue as highlighted so we don't update it next time
             poly.setAttribute("stroke-opacity", 0.987);
 
-            const geom = SelectedLandmark?.geometry;
-            components = geom.components[0].components;
-            functor = new OrthogonalizeId(components);
-
-            newWay = functor.action();
+            const newWay = OrthogonalizeId(SelectedLandmark?.geometry.coordinates);
             for (let j = 0; j < newWay.length; j++) {
                 if (
                     newWay[j] === false ||
@@ -389,8 +387,7 @@ NEW:<br>
 
     // WME Color Highlights by Timbones
     function highlightAPlace(venue: Venue, fg: string, bg: string) {
-        const poly = document.getElementById(venue.geometry.id);
-        if (venue.isPoint()) {
+        if (venue.geometry.type !== "Polygon") {
             poly.setAttribute("fill", fg);
         } else {
             // area
@@ -401,6 +398,7 @@ NEW:<br>
 
     // Point class
     class MagicPoint {
+        [key: number]: number;
         x: number;
         y: number;
         static distance(pt1: MagicPoint, pt2: MagicPoint) {
@@ -478,220 +476,203 @@ NEW:<br>
         }
     }
 
-    class OrthogonalizeId {
-        threshold: number = (getElId("_cMagicWandAngleThreshold") as HTMLInputElement)?.value
-            ? Number.parseFloat((getElId("_cMagicWandAngleThreshold") as HTMLInputElement)?.value)
-            : 0; // degrees within right or straight to alter
-        lowerThreshold = Math.cos((90 - this.threshold) * (Math.PI / 180));
-        upperThreshold = Math.cos(this.threshold * (Math.PI / 180));
-        way: any;
-        static magicZero: MagicPoint = new MagicPoint([0, 0]);
+    const OrthogonalizeId = (geometry: GeoJSON.Position[][] | null, threshold = 12) => {
+        const nomthreshold = threshold, // degrees within right or straight to alter
+            lowerThreshold = Math.cos(((90 - nomthreshold) * Math.PI) / 180),
+            upperThreshold = Math.cos((nomthreshold * Math.PI) / 180);
 
-        constructor(way) {
-            this.way = way;
-        }
-        action() {
-            const nodes = this.way;
-            let points = nodes.slice(0, nodes.length - 1).map((n: MagicPoint) => {
-                const t: MagicPoint = n.clone();
-                const p = new MagicPoint(proj4("EPSG:900913", "EPSG:4326", t.toPosition()));
-                p.y = lat2latp(p.y);
-                return p;
-            });
-            const corner = { i: 0, dotp: 1 };
-            const epsilon = 1e-4;
+        function Orthogonalize() {
+            if (!geometry || geometry.length === 0) {
+                return [];
+            }
+            let nodes = structuredClone(geometry[0]),
+                points = nodes.slice(0, -1).map((n: GeoJSON.Position) => {
+                    const p = [...n];
+                    p[1] = lat2latp(p[1]);
+                    return p;
+                }),
+                corner = { i: 0, dotp: 1 },
+                epsilon = 1e-4,
+                motions: GeoJSON.Position[] = [],
+                score = 0;
 
             // Triangle
-            if (nodes.length === 4) {
+            if (points.length === 4) {
                 for (let i = 0; i < 1000; i++) {
                     motions = points.map(calcMotion);
 
-                    const tmp = this.addPoints(points[corner.i], motions[corner.i]);
-                    points[corner.i].x = tmp.x;
-                    points[corner.i].y = tmp.y;
+                    const tmp = addPoints(points[corner.i], motions[corner.i]);
+                    points[corner.i][0] = tmp[0];
+                    points[corner.i][1] = tmp[1];
 
                     score = corner.dotp;
-                    if (score < epsilon) {
-                        break;
-                    }
+                    if (score < epsilon) break;
                 }
 
-                const n: MagicPoint = points[corner.i];
-                n.y = latp2lat(n.y);
-                const pp: MagicPoint = new MagicPoint(proj4("EPSG:4326", "EPSG:900913", n.toPosition()));
+                const n = points[corner.i];
+                n[1] = latp2lat(n[1]);
+                const pp = n;
 
-                const { id } = nodes[corner.i];
+                const id = nodes[corner.i].toString();
                 for (let i = 0; i < nodes.length; i++) {
-                    if (nodes[i].id !== id) {
-                        continue;
-                    }
+                    if (nodes[i].toString() !== id) continue;
 
-                    nodes[i].x = pp.x;
-                    nodes[i].y = pp.y;
+                    nodes[i][0] = pp[0];
+                    nodes[i][1] = pp[1];
                 }
 
                 return nodes;
             }
-            const originalPoints = nodes.slice(0, nodes.length - 1).map((n) => {
-                const t = n.clone();
-                const p = new MagicPoint(proj4("EPSG:900913", "EPSG:4326", t));
-                p.y = lat2latp(p.y);
+
+            const originalPoints = nodes.slice(0, -1).map((n) => {
+                const p = [...n];
+                p[1] = lat2latp(p[1]);
                 return p;
             });
             score = Number.POSITIVE_INFINITY;
 
-            for (let i = 0; i < 1000; i++) {
+            for (let i = 0; i < 1000 && !(score < epsilon); i++) {
                 motions = points.map(calcMotion);
-                for (j = 0; j < motions.length; j++) {
-                    const tmp = this.addPoints(points[j], motions[j]);
-                    points[j].x = tmp.x;
-                    points[j].y = tmp.y;
+                for (let j = 0; j < motions.length; j++) {
+                    const tmp = addPoints(points[j], motions[j]);
+                    points[j][0] = tmp[0];
+                    points[j][1] = tmp[1];
                 }
-                const newScore = this.squareness(points);
+                const newScore = squareness(points);
                 if (newScore < score) {
-                    best = [].concat(points);
+                    // best = [].concat(points);
                     score = newScore;
                 }
-                if (score < epsilon) {
-                    break;
-                }
+                // if (score < epsilon)
+                //     break;
             }
 
-            points = best;
+            // points = best;
 
             for (let i = 0; i < points.length; i++) {
                 // only move the points that actually moved
-                if (originalPoints[i].x !== points[i].x || originalPoints[i].y !== points[i].y) {
-                    const n: MagicPoint = points[i];
-                    n.y = latp2lat(n.y);
-                    const pp: MagicPoint = new MagicPoint(proj4("EPSG:4326", "EPSG:900913", n.toPosition()));
+                if (originalPoints[i][0] !== points[i][0] || originalPoints[i][1] !== points[i][1]) {
+                    const n = points[i];
+                    n[1] = latp2lat(n[1]);
+                    const pp = n;
 
-                    const { id } = nodes[i];
-                    for (j = 0; j < nodes.length; j++) {
-                        if (nodes[j].id !== id) {
-                            continue;
-                        }
+                    const id = nodes[i].toString();
+                    for (let j = 0; j < nodes.length; j++) {
+                        if (nodes[j].toString() !== id) continue;
 
-                        nodes[j].x = pp.x;
-                        nodes[j].y = pp.y;
+                        nodes[j][0] = pp[0];
+                        nodes[j][1] = pp[1];
                     }
                 }
             }
 
             // remove empty nodes on straight sections
-            for (i = 0; i < points.length; i++) {
-                const dotp = this.normalizedDotProduct(i, points);
+            for (let i = 0; i < points.length; i++) {
+                const dotp = normalizedDotProduct(i, points);
                 if (dotp < -1 + epsilon) {
-                    const id = nodes[i].id;
-                    for (j = 0; j < nodes.length; j++) {
-                        if (nodes[j].id !== id) {
-                            continue;
-                        }
+                    const id = nodes[i].toString();
+                    for (let j = 0; j < nodes.length; j++) {
+                        if (nodes[j].toString() !== id) continue;
 
-                        nodes[j] = false;
+                        nodes[j] = []
                     }
                 }
             }
 
-            return nodes;
+            return nodes.filter((item: GeoJSON.Position) => item.length > 0);
 
-            function calcMotion(b, k, array) {
-                const a = array[(k - 1 + array.length) % array.length];
-                const c = array[(k + 1) % array.length];
-                let p: MagicPoint = MagicPoint.subtractPoints(a, b);
-                let q: MagicPoint = MagicPoint.subtractPoints(c, b);
+            function calcMotion(b: Position, i: number, array: Position[]) {
+                let a = array[(i - 1 + array.length) % array.length],
+                    c = array[(i + 1) % array.length],
+                    p = subtractPoints(a, b),
+                    q = subtractPoints(c, b);
 
-                const scale =
-                    2 *
-                    Math.min(
-                        this.euclideanDistance(
-                            p,
-                            OrthogonalizeId.magicZero,
-                            this.euclideanDistance(q, OrthogonalizeId.magicZero)
-                        )
-                    );
+                const scale = 2 * Math.min(euclideanDistance(p, [0, 0]), euclideanDistance(q, [0, 0]));
                 p = normalizePoint(p, 1.0);
                 q = normalizePoint(q, 1.0);
 
-                let dotp = filterDotProduct(p.x * q.x + p.y * q.y);
+                let dotp = filterDotProduct(p[0] * q[0] + p[1] * q[1]);
 
                 // nasty hack to deal with almost-straight segments (angle is closer to 180 than to 90/270).
                 if (array.length > 3) {
-                    if (dotp < -0.707106781186547) {
-                        dotp += 1.0;
-                    }
+                    if (dotp < -Math.SQRT1_2) dotp += 1.0;
                 } else if (dotp && Math.abs(dotp) < corner.dotp) {
-                    corner.i = k;
+                    corner.i = i;
                     corner.dotp = Math.abs(dotp);
                 }
 
-                return normalizePoint(this.addPoints(p, q), 0.1 * dotp * scale);
+                return normalizePoint(addPoints(p, q), 0.1 * dotp * scale);
             }
         }
-        squareness(points: MagicPoint[]) {
-            return points.reduce((sum: number, val: MagicPoint, i: number, array: MagicPoint[]) => {
-                let dotp = this.normalizedDotProduct(i, array);
 
-                dotp = this.filterDotProduct(dotp);
+        function lat2latp(lat: number) {
+            return (180 / Math.PI) * Math.log(Math.tan(Math.PI / 4 + (lat * (Math.PI / 180)) / 2));
+        }
+
+        function latp2lat(a: number) {
+            return (180 / Math.PI) * (2 * Math.atan(Math.exp((a * Math.PI) / 180)) - Math.PI / 2);
+        }
+
+        function squareness(points: GeoJSON.Position[]) {
+            return points.reduce((sum, _val, i, array) => {
+                let dotp = normalizedDotProduct(i, array);
+
+                dotp = filterDotProduct(dotp);
                 return sum + 2.0 * Math.min(Math.abs(dotp - 1.0), Math.min(Math.abs(dotp), Math.abs(dotp + 1)));
             }, 0);
         }
 
-        normalizedDotProduct(i: number, points: MagicPoint[]) {
-            const a = points[(i - 1 + points.length) % points.length];
-            const b = points[i];
-            const c = points[(i + 1) % points.length];
-            let p: MagicPoint = this.subtractPoints(a, b);
-            let q = this.subtractPoints(c, b);
+        function normalizedDotProduct(i: number, points: GeoJSON.Position[]) {
+            let a = points[(i - 1 + points.length) % points.length],
+                b = points[i],
+                c = points[(i + 1) % points.length],
+                p = subtractPoints(a, b),
+                q = subtractPoints(c, b);
 
-            p = this.normalizePoint(p, 1.0);
-            q = this.normalizePoint(q, 1.0);
+            p = normalizePoint(p, 1.0);
+            q = normalizePoint(q, 1.0);
 
-            return p.x * q.x + p.y * q.y;
+            return p[0] * q[0] + p[1] * q[1];
         }
-        subtractPoints(a: MagicPoint, b: MagicPoint) {
-            return { x: a.x - b.x, y: a.y - b.y };
+
+        function subtractPoints(a: Position, b: Position) {
+            return [a[0] - b[0], a[1] - b[1]];
         }
-        addPoints(a: MagicPoint, b: MagicPoint) {
-            return { x: a.x + b.x, y: a.y + b.y };
+
+        function addPoints(a: Position, b: Position) {
+            return [a[0] + b[0], a[1] + b[1]];
         }
-        euclideanDistance(a: MagicPoint, b: MagicPoint): number {
-            const x = a.x - b.x;
-            const y = a.y - b.y;
+
+        function euclideanDistance(a: Position, b: Position) {
+            const x = a[0] - b[0],
+                y = a[1] - b[1];
             return Math.sqrt(x * x + y * y);
         }
-        normalizePoint(point: MagicPoint, scale: number): MagicPoint {
-            const vector: MagicPoint = new MagicPoint([0, 0]);
-            const length = Math.sqrt(point.x * point.x + point.y * point.y);
+
+        function normalizePoint(point: Position, scale: number) {
+            const vector = [0, 0];
+            const length = Math.sqrt(point[0] * point[0] + point[1] * point[1]);
             if (length !== 0) {
-                vector.x = point.x / length;
-                vector.y = point.y / length;
+                vector[0] = point[0] / length;
+                vector[1] = point[1] / length;
             }
 
-            vector.x *= scale;
-            vector.y *= scale;
+            vector[0] *= scale;
+            vector[1] *= scale;
 
             return vector;
         }
-        filterDotProduct(dotp: number) {
-            if (this.lowerThreshold > Math.abs(dotp) || Math.abs(dotp) > this.upperThreshold) {
-                return dotp;
-            }
+
+        function filterDotProduct(dotp: number) {
+            if (lowerThreshold > Math.abs(dotp) || Math.abs(dotp) > upperThreshold) return dotp;
 
             return 0;
         }
-        isDisabled(nodes) {
-            const points = nodes.slice(0, nodes.length - 1).map((n) => {
-                const p = n
-                    .toLonLat()
-                    .transform(new OpenLayers.Projection("EPSG:900913"), new OpenLayers.Projection("EPSG:4326"));
-                return { x: p.lat, y: p.lon };
-            });
 
-            return this.squareness(points);
-        }
-    }
-    function updateStatus(status) {
+        return Orthogonalize();
+    };
+
+    function updateStatus(status: string) {
         $("#_sMagicWandStatus").html(status);
         $("#magicwand_common").hide().show();
     }
@@ -718,14 +699,6 @@ NEW:<br>
         }
     }
 
-    function lat2latp(lat: number) {
-        return (180 / Math.PI) * Math.log(Math.tan(Math.PI / 4 + lat * (Math.PI / 180 / 2)));
-    }
-
-    function latp2lat(a: number) {
-        return (180 / Math.PI) * (2 * Math.atan(Math.exp(a * (Math.PI / 180))) - Math.PI / 2);
-    }
-
     function WMELandmarkMagicWand() {
         const MAX_CONCAVE_ANGLE_COS: number = Math.cos(90 / (180 / Math.PI)); // angle = 90 deg
         const MAX_SEARCH_BBOX_SIZE_PERCENT: number = 0.6;
@@ -745,7 +718,7 @@ NEW:<br>
         let color_sensitivity: number;
         let color_distance: number;
         let color_algorithm: string;
-        let landmark_type: VenueCategory;
+        let landmark_type: string;
         let sampling = 3;
         let waited_for = 0;
         let is_reload_tiles = false;
@@ -769,7 +742,7 @@ NEW:<br>
 
         sdk.Events.on({
             eventName: "wme-map-mouse-up",
-            eventHandler(pixel : SdkMouseEvent) {
+            eventHandler(pixel: SdkMouseEvent) {
                 try {
                     if (!MWSettings._enabled || !magicwand_processing_allowed || magic_wand_process) {
                         return;
@@ -809,12 +782,12 @@ NEW:<br>
                     sampling = Number.parseInt((getElId("_cMagicWandSampling") as HTMLInputElement).value, 10);
 
                     const LatLon = sdk.Map.getLonLatFromPixel(pixel);
-                    const olProj = proj4("EPSG:4326", "EPSG:3857", [LatLon.lon, LatLon.lat])
+                    const olProj = proj4("EPSG:4326", "EPSG:3857", [LatLon.lon, LatLon.lat]);
                     const olLatLon = {
                         lon: olProj[0],
-                        lat: olProj[1]
+                        lat: olProj[1],
                     };
-                    const pt: GeoJSON.Point = turf.point([LatLon.lon, LatLon.lat]);
+                    // const pt: GeoJSON.Point = turf.point([LatLon.lon, LatLon.lat]);
                     // const olLatLon = W.userscripts.toOLGeometry(pt);
                     // LatLon = { lon: olLatLon.x, lat: olLatLon.y };
 
@@ -832,7 +805,7 @@ NEW:<br>
                         canvas = document.createElement("canvas");
                         canvas.width = tile_size.h * layer.grid[0].length;
                         canvas.height = tile_size.w * layer.grid.length;
-                        context = (canvas as HTMLCanvasElement).getContext("2d");                        
+                        context = (canvas as HTMLCanvasElement).getContext("2d");
                     }
 
                     if (!draw_canvas) {
@@ -900,11 +873,11 @@ NEW:<br>
 
                                 // Add tile to canvas
                                 context?.drawImage(
-                                    this,
+                                    (this as HTMLImageElement),
                                     tile_size.w * tilei1,
                                     tile_size.h * tilerow1,
-                                    this.width,
-                                    this.height
+                                    (this as HTMLImageElement).width,
+                                    (this as HTMLImageElement).height
                                 );
 
                                 total_tiles--;
@@ -932,11 +905,9 @@ NEW:<br>
                     } else {
                         process();
                     }
-                } 
-                catch(ex) {
+                } catch (ex) {
                     console.log(ex);
-                }
-                finally {
+                } finally {
                     magic_wand_process = false;
                 }
             },
@@ -1008,20 +979,20 @@ NEW:<br>
             );
             $("#magicwand_common").hide().show();
 
-            let current_pixel;
-            let processed_pixels = {};
+            let current_pixel: GeoJSON.Position | undefined;
+            let processed_pixels: Record<string, boolean> = {};
             const polyPixels = [];
             let g = 0;
             let minX = Number.MAX_VALUE;
-            let first_pixel = null;
+            let first_pixel: GeoJSON.Position | undefined;
 
-            const stack: Position[] = [[clickCanvasX, clickCanvasY]];
+            const stack: GeoJSON.Position[] = [[clickCanvasX, clickCanvasY]];
 
-            let x;
-            let y;
-            let c_pixel;
-            let viewX;
-            let viewY;
+            let x: number;
+            let y: number;
+            let c_pixel: number[];
+            let viewX: number;
+            let viewY: number;
 
             updateStatus("Processing tiles image");
 
@@ -1039,7 +1010,9 @@ NEW:<br>
             while (stack.length > 0 && g < 1500000) {
                 g++;
                 current_pixel = stack.pop();
-
+                if(!current_pixel) {
+                    continue;
+                }
                 // Already processed before
                 if (processed_pixels[`${current_pixel[0]},${current_pixel[1]}`]) {
                     continue;
@@ -1064,7 +1037,7 @@ NEW:<br>
                     if (viewX < minX) {
                         minX = viewX;
                         first_pixel = [viewX, viewY];
-                    } else if (viewX === minX && viewY < first_pixel[1]) {
+                    } else if (viewX === minX && first_pixel !== undefined && viewY < first_pixel[1]) {
                         first_pixel = [viewX, viewY];
                     }
 
@@ -1080,46 +1053,45 @@ NEW:<br>
                         stack.push([current_pixel[0] + 1, current_pixel[1]]);
                     }
 
-                    if (processed_pixels[`${current_pixel[0]},${current_pixel[1]}` - 1]) {
+                    if (processed_pixels[`${current_pixel[0]},${current_pixel[1]} - 1`]) {
                         stack.push([current_pixel[0], current_pixel[1] - 1]);
                     }
 
-                    if (typeof processed_pixels[`${current_pixel[0]},${current_pixel[1]}${1}`] === "undefined") {
+                    if (processed_pixels[`${current_pixel[0]},${current_pixel[1]}${1}`] === undefined) {
                         stack.push([current_pixel[0], current_pixel[1] + 1]);
                     }
 
                     // Experimental: with diagonal pixels
-                    if (typeof processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}${1}`] === "undefined") {
+                    if (processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}${1}`] === undefined) {
                         stack.push([current_pixel[0], current_pixel[1] + 1]);
                     }
-                    if (typeof processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}` - 1] === "undefined") {
+                    if (processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]} - 1`] === undefined) {
                         stack.push([current_pixel[0], current_pixel[1] + 1]);
                     }
-                    if (typeof processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]}${1}`] === "undefined") {
+                    if (processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]}${1}`] === undefined) {
                         stack.push([current_pixel[0], current_pixel[1] + 1]);
                     }
-                    if (typeof processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]}` - 1] === "undefined") {
+                    if (processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]-1}`] === undefined) {
                         stack.push([current_pixel[0], current_pixel[1] + 1]);
                     }
                 }
             }
 
             // Clear unnecessary data
-            processed_pixels = [];
+            processed_pixels = {};
             current_pixel = [];
             canvas_data = [];
 
-            let points;
+            let points: MagicPoint[] = [];
 
             if (polyPixels.length > 2) {
                 updateStatus("Computing convex hull");
 
-                points = [];
                 for (let j = 0; j < polyPixels.length; j++) {
                     points.push(new MagicPoint([polyPixels[j][0], polyPixels[j][1]]));
                 }
 
-                const convolutionHull = hull(points, 40, [".x", ".y"]);
+                const convolutionHull = hull(points, 40, true);
                 createLandmark(convolutionHull /* , simplify_param */);
             } else {
                 points = [];
@@ -1137,7 +1109,7 @@ NEW:<br>
             updateStatus(status_msg);
         }
 
-        function colorDistance(c_pixel, ref_pixel) {
+        function colorDistance(c_pixel: number[], ref_pixel: number[]) {
             return (
                 Math.abs(c_pixel[0] - ref_pixel[0]) <= color_sensitivity &&
                 Math.abs(c_pixel[1] - ref_pixel[1]) <= color_sensitivity &&
@@ -1146,13 +1118,19 @@ NEW:<br>
             );
         }
 
-        function createLandmark(points: MagicPoint[] /* , simplify */) {
-            const polyPoints: Position[] = [];
+        function createLandmark(points: GeoJSON.Position[] | MagicPoint[] /* , simplify */) {
+            if (points.length < 3) {
+                resetProcessState("Please, try again, not enough points found");
+                return;
+            }
+            const polyPoints: GeoJSON.Position[] = points.map((p: MagicPoint | GeoJSON.Position) => { if(p instanceof MagicPoint) return p.toPosition();
+                    return p;
+            });
 
-            for (let k = 0; k < points.length; k++) {
-                const o = points[k];
-                const point_lonlat = sdk.Map.getLonLatFromPixel(o);
-                polyPoints.push([point_lonlat.lon, point_lonlat.lat]);
+            for (let k = 0; k < polyPoints.length; k++) {
+                const o = polyPoints[k];
+                const point_lonlat = sdk.Map.getLonLatFromPixel({x: o[0], y: o[1]});
+                polyPoints[k] = [point_lonlat.lon, point_lonlat.lat];
             }
 
             // const LineString = new OpenLayers.Geometry.LineString(polyPoints);
@@ -1162,7 +1140,7 @@ NEW:<br>
 
             const polygon = turf.polygon([polyPoints]);
 
-            sdk.DataModel.Venues.addVenue({ category: landmark_type, geometry: polygon.geometry });
+            sdk.DataModel.Venues.addVenue({ category: landmark_type as VenueCategoryId, geometry: polygon.geometry });
             // const WazefeatureVectorLandmark = require("Waze/Feature/Vector/Landmark");
             // const WazeActionAddLandmark = require("Waze/Action/AddLandmark");
 
@@ -1176,7 +1154,7 @@ NEW:<br>
         // Human-eye Similarity algorithm below
         //
 
-        function calcColorDistance(c_pixel, r_pixel) {
+        function calcColorDistance(c_pixel: number[], r_pixel: number[]) {
             let xyz = rgbToXyz(c_pixel[0], c_pixel[1], c_pixel[2]);
             const lab = xyzToLab(xyz[0], xyz[1], xyz[2]);
 
@@ -1263,12 +1241,12 @@ NEW:<br>
         }
 
         // Finally, use cie1994 to get delta-e using LAB
-        function cie1994(x, y, isTextiles) {
-            x = { l: x[0], a: x[1], b: x[2] };
-            y = { l: y[0], a: y[1], b: y[2] };
-            let k2;
-            let k1;
-            let kl;
+        function cie1994(pointX: number[], pointY: number[], isTextiles: boolean): number {
+            const x = { l: pointX[0], a: pointX[1], b: pointX[2] };
+            const y = { l: pointY[0], a: pointY[1], b: pointY[2] };
+            let k2: number;
+            let k1: number;
+            let kl: number;
             const kh = 1;
             const kc = 1;
             if (isTextiles) {
@@ -1321,7 +1299,7 @@ NEW:<br>
         }
 
         // grid.js
-        class Grid{
+        class Grid {
             private _cellSize: any;
             private _cells: never[];
 
@@ -1341,11 +1319,11 @@ NEW:<br>
                     }
                     this._cells[x][y].push(point);
                 }, this);
-            };
+            }
             cellPoints(x: string | number, y: string | number) {
                 // (Number, Number) -> Array
                 return this._cells[x] !== undefined && this._cells[x][y] !== undefined ? this._cells[x][y] : [];
-            };
+            }
             rangePoints(bbox: GeoJSON.BBox) {
                 // (Array) -> Array
                 const tlCellXY = this.point2CellXY([bbox[0], bbox[1]]);
@@ -1359,7 +1337,7 @@ NEW:<br>
                 }
 
                 return points;
-            };
+            }
             removePoint(point) {
                 // (Array) -> Array
                 const cellXY = this.point2CellXY(point);
@@ -1376,11 +1354,11 @@ NEW:<br>
                 cell.splice(pointIdxInCell, 1);
 
                 return cell;
-            };
+            }
             point2CellXY(point: Position): Position {
                 // (Array) -> Array
-                const x = Number.parseInt(point[0] / this._cellSize, 10);
-                const y = Number.parseInt(point[1] / this._cellSize, 10);
+                const x = Math.floor(point[0] / this._cellSize);
+                const y = Math.floor(point[1] / this._cellSize);
                 return [x, y];
             }
             extendBbox(bbox, scaleFactor) {
@@ -1392,7 +1370,7 @@ NEW:<br>
                     bbox[3] + scaleFactor * this._cellSize,
                 ];
             }
-        };
+        }
 
         function grid(points, cellSize) {
             return new Grid(points, cellSize);
@@ -1400,23 +1378,23 @@ NEW:<br>
 
         // format.js
         const formatUtil = {
-            toXy(pointset, format) {
-                if (format === undefined) {
+            toPosition(pointset: Position[] | MagicPoint[], format: boolean | undefined = false): Position[] | MagicPoint[] {
+                if (!format) {
                     return pointset.slice();
                 }
-                return pointset.map((pt) => [pt.x, pt.y]);
+                return pointset.map((pt: Position | MagicPoint) => {if(pt instanceof MagicPoint) return pt.toPosition(); return pt;});
             },
 
-            fromXy(pointset, format) {
+            toMagicPoint(pointset: Position[], format: boolean | undefined = false): MagicPoint[] | Position[] {
                 if (format === undefined) {
                     return pointset.slice();
                 }
-                return pointset.map((pt) => ({ x: pt[0], y: pt[1] }));
+                return pointset.map((pt) => {return new MagicPoint(pt); });
             },
         };
 
         // convex.js
-        function _cross(o, a, b) {
+        function _cross(o: Position, a: Position, b: Position) {
             return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
         }
 
@@ -1462,15 +1440,15 @@ NEW:<br>
 
         // hull.js
 
-        function _filterDuplicates(pointset) {
-            return pointset.filter((el, idx, arr) => {
+        function _filterDuplicates(pointset: Position[]) {
+            return pointset.filter((el: Position, idx: number, arr: Position[]) => {
                 const prevEl = arr[idx - 1];
                 return idx === 0 || !(prevEl[0] === el[0] && prevEl[1] === el[1]);
             });
         }
 
-        function _sortByX(pointset) {
-            return pointset.sort((a, b) => {
+        function _sortByX(pointset: Position[] | MagicPoint[]) {
+            return pointset.sort((a: Position | MagicPoint, b: Position | MagicPoint) => {
                 if (a[0] === b[0]) {
                     return a[1] - b[1];
                 }
@@ -1482,7 +1460,7 @@ NEW:<br>
             return (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2;
         }
 
-        function _cos(o, a, b) {
+        function _cos(o: GeoJSON.Position, a: GeoJSON.Position, b: GeoJSON.Position) {
             const aShifted = [a[0] - o[0], a[1] - o[1]];
             const bShifted = [b[0] - o[0], b[1] - o[1]];
             const sqALen = _sqLength(o, a);
@@ -1550,8 +1528,8 @@ NEW:<br>
             let point = null;
             let angle1Cos = MAX_CONCAVE_ANGLE_COS;
             let angle2Cos = MAX_CONCAVE_ANGLE_COS;
-            let a1Cos;
-            let a2Cos;
+            let a1Cos: number;
+            let a2Cos: number;
 
             for (let i = 0; i < innerPoints.length; i++) {
                 a1Cos = _cos(edge[0], edge[1], innerPoints[i]);
@@ -1619,14 +1597,14 @@ NEW:<br>
             return convex1;
         }
 
-        function hull(pointset, concavity, format) {
+        function hull(pointset: MagicPoint[], concavity: number, format: boolean | undefined = false) {
             const maxEdgeLen = concavity || 20;
 
             if (pointset.length < 4) {
                 return pointset.slice();
             }
 
-            const points = _filterDuplicates(_sortByX(formatUtil.toXy(pointset, format)));
+            const points = _filterDuplicates(_sortByX(formatUtil.toPosition(pointset, format)));
 
             const occupiedArea = _occupiedArea(points);
             const maxSearchArea = [
@@ -1635,13 +1613,13 @@ NEW:<br>
             ];
 
             const convex1 = convex(points);
-            const innerPoints = points.filter((pt) => convex1.indexOf(pt) < 0);
+            const innerPoints = points.filter((pt: MagicPoint) => convex1.indexOf(pt) < 0);
 
             const cellSize = Math.ceil(1 / (points.length / (occupiedArea[0] * occupiedArea[1])));
 
             const concave = _concave(convex1, maxEdgeLen ** 2, maxSearchArea, grid(innerPoints, cellSize), {});
 
-            return formatUtil.fromXy(concave, format);
+            return formatUtil.toMagicPoint(concave, format);
         }
     }
 
