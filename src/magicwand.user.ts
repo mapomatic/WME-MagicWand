@@ -113,7 +113,7 @@ NEW:<br>
             updateMonitor.start();
         } catch (ex) {
             // Report, but don't stop if ScriptUpdateMonitor fails.
-            console.error("WME LaneTools:", ex);
+            console.error("WME Magic Wand:", ex);
         }
     }
 
