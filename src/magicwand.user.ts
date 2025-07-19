@@ -5,7 +5,8 @@
 // @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it
 // @include             https://beta.waze.com/*
 // @version             2025.07.16.001
-// @grant               none
+// @grant               GM_xmlhttpRequest
+// @grant               unsafeWindow
 // @require             https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js
 // @require             https://cdn.jsdelivr.net/npm/proj4@2.16.2/dist/proj4.min.js
 // @require             https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
@@ -38,11 +39,11 @@
 // import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
 
 let sdk: WmeSDK;
-window.SDK_INITIALIZED.then(() => {
-    if (!window.getWmeSdk) {
+unsafeWindow.SDK_INITIALIZED.then(() => {
+    if (!unsafeWindow.getWmeSdk) {
         throw new Error("SDK is not installed");
     }
-    sdk = window.getWmeSdk({
+    sdk = unsafeWindow.getWmeSdk({
         scriptId: "wme-magicwand",
         scriptName: "WME Magic Wand",
     });
@@ -252,9 +253,6 @@ NEW:<br>
                 }
             });
         });
-
-        // Event listeners
-        // window.addEventListener("beforeunload", saveWMEMagicWandOptions, false);
 
         // Hotkeys
         registerKeyShortcut("WMEMagicWand_HighlightLandmark", "Highlight Landmarks", highlightLandmarks, "C+k");
@@ -922,7 +920,7 @@ NEW:<br>
                     return;
                 }
 
-                window.setTimeout(waitForLoad, 200);
+                setTimeout(waitForLoad, 200);
             } else {
                 is_reload_tiles = false;
                 process();
