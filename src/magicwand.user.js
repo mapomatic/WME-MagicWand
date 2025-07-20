@@ -6,11 +6,11 @@
 // @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it
 // @include             https://beta.waze.com/*
 // @version             2025.07.16.001
-// @grant               GM_xmlhttpRequest
-// @grant               unsafeWindow
 // @require             https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js
 // @require             https://cdn.jsdelivr.net/npm/proj4@2.16.2/dist/proj4.min.js
 // @require             https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
+// @grant               GM_xmlhttpRequest
+// @grant               unsafeWindow
 // @license             MIT
 // @copyright           2018 Vadim Istratov <wpoi@ya.ru>
 // ==/UserScript==
@@ -92,6 +92,27 @@ NEW:<br>
         catch (ex) {
             // Report, but don't stop if ScriptUpdateMonitor fails.
             console.error("WME Magic Wand:", ex);
+        }
+    }
+    function toggleMagicWandProcessing(id) {
+        let status;
+        let bgColor;
+        let btnText;
+        if (MWSettings._enabled) {
+            if (!magicwand_processing_allowed) {
+                bgColor = "red";
+                btnText = "STOP MAGIC WAND";
+                status = "Waiting for click";
+            }
+            else {
+                bgColor = "green";
+                btnText = "START MAGIC WAND";
+                status = "Disabled";
+            }
+            magicwand_processing_allowed = !magicwand_processing_allowed;
+            $(id).css("background-color", bgColor);
+            $(id).text(btnText);
+            updateStatus(status);
         }
     }
     async function initializeMagicWand() {
@@ -201,26 +222,8 @@ NEW:<br>
                 document.getElementById("mw-ScriptEnabled").checked = MWSettings._enabled;
             });
             // UI listeners
-            $(".mw-common-process-click").on("click", function (e) {
-                let status;
-                let bgColor;
-                let btnText;
-                if (MWSettings._enabled) {
-                    if (!magicwand_processing_allowed) {
-                        bgColor = "red";
-                        btnText = "STOP MAGIC WAND";
-                        status = "Waiting for click";
-                    }
-                    else {
-                        bgColor = "green";
-                        btnText = "START MAGIC WAND";
-                        status = "Disabled";
-                    }
-                    magicwand_processing_allowed = !magicwand_processing_allowed;
-                    $(this).css("background-color", bgColor);
-                    $(this).text(btnText);
-                    updateStatus(status);
-                }
+            $(".mw-common-process-click").on("click", (e) => {
+                toggleMagicWandProcessing("#" + e.target.id);
             });
         });
         // Hotkeys
@@ -917,9 +920,11 @@ NEW:<br>
             }
             points = [];
             resetProcessState();
+            toggleMagicWandProcessing("#_bMagicWandProcessClick");
         }
         function resetProcessState(status_msg = null) {
             status_msg = !status_msg ? "Waiting for click" : status_msg;
+            magic_wand_process = false;
             updateStatus(status_msg);
         }
         function colorDistance(c_pixel, ref_pixel) {
@@ -1204,10 +1209,14 @@ NEW:<br>
         }
         // hull.js
         function _filterDuplicates(pointset) {
-            return pointset.filter((el, idx, arr) => {
+            let filteredPointset = pointset.filter((el, idx, arr) => {
                 const prevEl = arr[idx - 1];
                 return idx === 0 || !(prevEl[0] === el[0] && prevEl[1] === el[1]);
             });
+            if (filteredPointset.length > 0 && filteredPointset[0] instanceof MagicPoint) {
+                filteredPointset = formatUtil.toPosition(filteredPointset, true);
+            }
+            return filteredPointset;
         }
         function _sortByX(pointset) {
             return pointset.sort((a, b) => {

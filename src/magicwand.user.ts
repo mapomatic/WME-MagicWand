@@ -5,11 +5,11 @@
 // @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it
 // @include             https://beta.waze.com/*
 // @version             2025.07.16.001
-// @grant               GM_xmlhttpRequest
-// @grant               unsafeWindow
 // @require             https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js
 // @require             https://cdn.jsdelivr.net/npm/proj4@2.16.2/dist/proj4.min.js
 // @require             https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
+// @grant               GM_xmlhttpRequest
+// @grant               unsafeWindow
 // @license             MIT
 // @copyright           2018 Vadim Istratov <wpoi@ya.ru>
 // ==/UserScript==
@@ -88,7 +88,7 @@ NEW:<br>
     - Conversion to WME SDK<br>
 `;
     /* helper function */
-    function getElClass(classname: string, node: HTMLElement) {
+    function getElClass(classname: string, node: HTMLElement | null) {
         if (!node) node = document.getElementsByTagName("body")[0];
         const a = [];
         const re = new RegExp(`\\b${classname}\\b`);
@@ -100,6 +100,7 @@ NEW:<br>
     function getElId(node: string): HTMLElement | null {
         return document.getElementById(node);
     }
+
 
     /* =========================================================================== */
     function startScriptUpdateMonitor() {
@@ -115,6 +116,28 @@ NEW:<br>
         } catch (ex) {
             // Report, but don't stop if ScriptUpdateMonitor fails.
             console.error("WME Magic Wand:", ex);
+        }
+    }
+
+    function toggleMagicWandProcessing(id: string) {
+        let status: string;
+        let bgColor: string;
+        let btnText: string;
+        if (MWSettings._enabled) {
+            if (!magicwand_processing_allowed) {
+                bgColor = "red";
+                btnText = "STOP MAGIC WAND";
+                status = "Waiting for click";
+            } else {
+                bgColor = "green";
+                btnText = "START MAGIC WAND";
+                status = "Disabled";
+            }
+            
+            magicwand_processing_allowed = !magicwand_processing_allowed;
+            $(id).css("background-color", bgColor);
+            $(id).text(btnText);
+            updateStatus(status);
         }
     }
 
@@ -231,26 +254,8 @@ NEW:<br>
                 (document.getElementById("mw-ScriptEnabled") as HTMLInputElement).checked = MWSettings._enabled;
             });
             // UI listeners
-            $(".mw-common-process-click").on("click", function (e) {
-                let status: string;
-                let bgColor: string;
-                let btnText: string;
-                if (MWSettings._enabled) {
-                    if (!magicwand_processing_allowed) {
-                        bgColor = "red";
-                        btnText = "STOP MAGIC WAND";
-                        status = "Waiting for click";
-                    } else {
-                        bgColor = "green";
-                        btnText = "START MAGIC WAND";
-                        status = "Disabled";
-                    }
-
-                    magicwand_processing_allowed = !magicwand_processing_allowed;
-                    $(this).css("background-color", bgColor);
-                    $(this).text(btnText);
-                    updateStatus(status);
-                }
+            $(".mw-common-process-click").on("click", (e) => {
+                toggleMagicWandProcessing("#"+e.target.id);
             });
         });
 
@@ -579,7 +584,7 @@ NEW:<br>
 
             return nodes.filter((item: GeoJSON.Position) => item.length > 0);
 
-            function calcMotion(b: Position, i: number, array: Position[]) {
+            function calcMotion(b: GeoJSON.Position, i: number, array: GeoJSON.Position[]) {
                 let a = array[(i - 1 + array.length) % array.length],
                     c = array[(i + 1) % array.length],
                     p = subtractPoints(a, b),
@@ -633,21 +638,21 @@ NEW:<br>
             return p[0] * q[0] + p[1] * q[1];
         }
 
-        function subtractPoints(a: Position, b: Position) {
+        function subtractPoints(a: GeoJSON.Position, b: GeoJSON.Position): GeoJSON.Position {
             return [a[0] - b[0], a[1] - b[1]];
         }
 
-        function addPoints(a: Position, b: Position) {
+        function addPoints(a: GeoJSON.Position, b: GeoJSON.Position): GeoJSON.Position {
             return [a[0] + b[0], a[1] + b[1]];
         }
 
-        function euclideanDistance(a: Position, b: Position) {
+        function euclideanDistance(a: GeoJSON.Position, b: GeoJSON.Position): number {
             const x = a[0] - b[0],
                 y = a[1] - b[1];
             return Math.sqrt(x * x + y * y);
         }
 
-        function normalizePoint(point: Position, scale: number) {
+        function normalizePoint(point: GeoJSON.Position, scale: number) {
             const vector = [0, 0];
             const length = Math.sqrt(point[0] * point[0] + point[1] * point[1]);
             if (length !== 0) {
@@ -1099,10 +1104,12 @@ NEW:<br>
 
             points = [];
             resetProcessState();
+            toggleMagicWandProcessing("#_bMagicWandProcessClick");
         }
 
         function resetProcessState(status_msg: string | null = null) {
             status_msg = !status_msg ? "Waiting for click" : status_msg;
+            magic_wand_process = false;
 
             updateStatus(status_msg);
         }
@@ -1353,13 +1360,13 @@ NEW:<br>
 
                 return cell;
             }
-            point2CellXY(point: Position): Position {
+            point2CellXY(point: GeoJSON.Position): GeoJSON.Position {
                 // (Array) -> Array
                 const x = Math.floor(point[0] / this._cellSize);
                 const y = Math.floor(point[1] / this._cellSize);
                 return [x, y];
             }
-            extendBbox(bbox, scaleFactor) {
+            extendBbox(bbox: GeoJSON.Position, scaleFactor: number): GeoJSON.BBox {
                 // (Array, Number) -> Array
                 return [
                     bbox[0] - scaleFactor * this._cellSize,
@@ -1370,20 +1377,20 @@ NEW:<br>
             }
         }
 
-        function grid(points, cellSize) {
+        function grid(points, cellSize) : Grid{
             return new Grid(points, cellSize);
         }
 
         // format.js
         const formatUtil = {
-            toPosition(pointset: Position[] | MagicPoint[], format: boolean | undefined = false): Position[] | MagicPoint[] {
+            toPosition(pointset: (GeoJSON.Position | MagicPoint)[], format: boolean | undefined = false): (GeoJSON.Position | MagicPoint)[] {
                 if (!format) {
                     return pointset.slice();
                 }
-                return pointset.map((pt: Position | MagicPoint) => {if(pt instanceof MagicPoint) return pt.toPosition(); return pt;});
+                return pointset.map((pt: GeoJSON.Position | MagicPoint) => {if(pt instanceof MagicPoint) return pt.toPosition(); return pt;});
             },
 
-            toMagicPoint(pointset: Position[], format: boolean | undefined = false): MagicPoint[] | Position[] {
+            toMagicPoint(pointset: GeoJSON.Position[], format: boolean | undefined = false): MagicPoint[] | GeoJSON.Position[] {
                 if (format === undefined) {
                     return pointset.slice();
                 }
@@ -1392,7 +1399,7 @@ NEW:<br>
         };
 
         // convex.js
-        function _cross(o: Position, a: Position, b: Position) {
+        function _cross(o: GeoJSON.Position, a: GeoJSON.Position, b: GeoJSON.Position) {
             return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
         }
 
@@ -1428,7 +1435,7 @@ NEW:<br>
         }
 
         // pointset has to be sorted by X
-        function convex(pointset) {
+        function convex(pointset: GeoJSON.Position[]) : GeoJSON.Position[] {
             const upper = _upperTangent(pointset);
             const lower = _lowerTangent(pointset);
             const result = lower.concat(upper);
@@ -1438,15 +1445,19 @@ NEW:<br>
 
         // hull.js
 
-        function _filterDuplicates(pointset: Position[]) {
-            return pointset.filter((el: Position, idx: number, arr: Position[]) => {
+        function _filterDuplicates(pointset: (GeoJSON.Position | MagicPoint)[]) : GeoJSON.Position[] {
+            let filteredPointset = pointset.filter((el: GeoJSON.Position | MagicPoint, idx: number, arr: (GeoJSON.Position | MagicPoint)[]) => {
                 const prevEl = arr[idx - 1];
                 return idx === 0 || !(prevEl[0] === el[0] && prevEl[1] === el[1]);
             });
+            if(filteredPointset.length > 0 && filteredPointset[0] instanceof MagicPoint) {
+                filteredPointset = formatUtil.toPosition(filteredPointset, true);
+            }
+            return filteredPointset as GeoJSON.Position[];
         }
 
-        function _sortByX(pointset: Position[] | MagicPoint[]) {
-            return pointset.sort((a: Position | MagicPoint, b: Position | MagicPoint) => {
+        function _sortByX(pointset: (GeoJSON.Position | MagicPoint)[]) {
+            return pointset.sort((a: GeoJSON.Position | MagicPoint, b: GeoJSON.Position | MagicPoint) => {
                 if (a[0] === b[0]) {
                     return a[1] - b[1];
                 }
@@ -1511,7 +1522,7 @@ NEW:<br>
             ];
         }
 
-        function _bBoxAround(edge) {
+        function _bBoxAround(edge) : GeoJSON.BBox {
             return [
                 Math.min(edge[0][0], edge[1][0]), // left
                 Math.min(edge[0][1], edge[1][1]), // top
@@ -1611,7 +1622,7 @@ NEW:<br>
             ];
 
             const convex1 = convex(points);
-            const innerPoints = points.filter((pt: MagicPoint) => convex1.indexOf(pt) < 0);
+            const innerPoints = points.filter((pt: GeoJSON.Position) => convex1.indexOf(pt) < 0);
 
             const cellSize = Math.ceil(1 / (points.length / (occupiedArea[0] * occupiedArea[1])));
 
