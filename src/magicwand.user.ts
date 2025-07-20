@@ -34,7 +34,7 @@
 /* global W */
 
 // import * as turf from "@turf/turf";
-// import type { WmeSDK, Venue, VenueCategory, VenueCategoryId, SelectionWithLocalizedTypeName } from "wme-sdk-typings";
+// import type { WmeSDK, Venue, VenueCategory, VenueCategoryId, SelectionWithLocalizedTypeName, Segment } from "wme-sdk-typings";
 // import proj4 from "proj4";
 // import WazeWrap from "https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js";
 
@@ -68,6 +68,8 @@ function magicwand() {
         _cMagicWandSampling: number;
         _cMagicWandAngleThreshold: number;
         lastSaveAction: number;
+        _ignorePLR?: boolean; // Parking Lot Road
+        _ignoreUnnamedPR?: boolean; // Ignore Unnamed Private Road
     }
 
     let MWSettings: MWOptions;
@@ -282,6 +284,8 @@ NEW:<br>
             _cMagicWandSampling: 0,
             _cMagicWandAngleThreshold: 0,
             lastSaveAction: 0,
+            _ignorePLR: false, // Parking Lot Road
+            _ignoreUnnamedPR: false, // Ignore Unnamed Private Road
         };
         const storedOptions = localStorage.getItem("WMEMagicWandScript");
         const options: MWOptions | null = !storedOptions ? null : JSON.parse(storedOptions);
@@ -1123,6 +1127,49 @@ NEW:<br>
             );
         }
 
+        /**
+         * Finds the closest on-screen drivable segment to the given point, ignoring PLR and PR segments if the options are set
+         * Similar to WazeWrap.Util just using turf.
+         * @function WazeWrap.Geometry.findSDKClosestSegment
+         * @param {GeoJSON.Point} The given point to find the closest segment to
+         * @param {boolean} If true, Parking Lot Road segments will be ignored when finding the closest segment
+         * @param {boolean} If true, Private Road segments will be ignored when finding the closest segment
+         * @returns {Object} Returns an Object containing the Segment and Closest Point on the Segment
+         **/
+        function findClosestSegment(myPoint: GeoJSON.Point) : Segment | null {
+            let minDistance = Number.POSITIVE_INFINITY;
+            let closestSegment: Segment | null = null;
+
+            for (const s of sdk.DataModel.Segments.getAll()) {
+                const segmentType = s.roadType;
+                if (
+                    segmentType === 10 ||
+                    segmentType === 16 ||
+                    segmentType === 18 ||
+                    segmentType === 19 ||
+                    (MWSettings._ignorePLR && segmentType === 20)
+                )
+                    continue;
+
+                if (MWSettings._ignoreUnnamedPR && segmentType === 17) {
+                    const primaryStreetId = s.primaryStreetId;
+                    if (!primaryStreetId) continue;
+                    const nm = sdk.DataModel.Streets.getById({ streetId: primaryStreetId })?.name;
+                    if (!nm || nm === null || nm.trim().length === 0)
+                        //PR
+                        continue;
+                }
+
+                const distanceToSegment = turf.pointToLineDistance(myPoint, s.geometry);
+
+                if (distanceToSegment < minDistance) {
+                    minDistance = distanceToSegment;
+                    closestSegment = s
+                }
+            }
+            return closestSegment;
+        }
+
         function createLandmark(points: GeoJSON.Position[] | MagicPoint[] /* , simplify */) {
             if (points.length < 3) {
                 resetProcessState("Please, try again, not enough points found");
@@ -1144,8 +1191,13 @@ NEW:<br>
             // }
 
             const polygon = turf.polygon([polyPoints]);
+            const centeroid = turf.centroid(polygon);
+            const segment = findClosestSegment(centeroid.geometry);
 
-            sdk.DataModel.Venues.addVenue({ category: landmark_type as VenueCategoryId, geometry: polygon.geometry });
+            const v = sdk.DataModel.Venues.addVenue({ category: landmark_type as VenueCategoryId, geometry: polygon.geometry});
+            if(segment?.primaryStreetId) {
+                sdk.DataModel.Venues.updateAddress({ streetId: segment.primaryStreetId, venueId: v.toString() });
+            }
             // const WazefeatureVectorLandmark = require("Waze/Feature/Vector/Landmark");
             // const WazeActionAddLandmark = require("Waze/Action/AddLandmark");
 
