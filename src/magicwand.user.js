@@ -5,7 +5,7 @@
 // @namespace           http://en.advisor.travel/wme-magic-wand
 // @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it
 // @include             https://beta.waze.com/*
-// @version             2025.07.16.001
+// @version             2025.07.20.001
 // @require             https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js
 // @require             https://cdn.jsdelivr.net/npm/proj4@2.16.2/dist/proj4.min.js
 // @require             https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
@@ -203,6 +203,19 @@ NEW:<br>
                     </table>
                 </div>
             </div>
+            <div class='mw-landmark-options' style='display:block;border-bottom:2px double grey;padding-top:8px'>
+                <div class='mw-landmark-options mw-landmark-options-wrapper'>
+                    <div class='mw-landmark-options mw-landmark-options-plr-container'>
+                        <input type=checkbox class='mw-landmark-options mw-checkbox' id='mw-ignorePLR' />
+                        <label class='mw-label' for='mw-ignorePLR'><span class='mw-ignorePLR'>Ignore PLR for Address</span></label>
+                    </div>
+                    <div class='mw-landmark-options mw-landmark-options-pr-container'>
+                        <input type=checkbox class='mw-landmark-options mw-checkbox' id='mw-ignoreunnamePR' />
+                        <label class='mw-label' for='mw-ignoreunnamePR'><span class='mw-ignoreunnamePR'>Ignore Unnamed PR for Address</span></label>
+                    </div>
+
+                </div>
+            </div>
         `,
         ].join(" ");
         // const newtab = document.createElement("li");
@@ -225,6 +238,11 @@ NEW:<br>
             $(".mw-common-process-click").on("click", (e) => {
                 toggleMagicWandProcessing("#" + e.target.id);
             });
+            $(".mw-checkbox").on("click", function () {
+                const settingName = $(this)[0].id.substring(3);
+                MWSettings[settingName] = this.checked;
+                saveWMEMagicWandOptions();
+            });
         });
         // Hotkeys
         registerKeyShortcut("WMEMagicWand_HighlightLandmark", "Highlight Landmarks", highlightLandmarks, "C+k");
@@ -241,8 +259,8 @@ NEW:<br>
             _cMagicWandSampling: 0,
             _cMagicWandAngleThreshold: 0,
             lastSaveAction: 0,
-            _ignorePLR: false, // Parking Lot Road
-            _ignoreUnnamedPR: false, // Ignore Unnamed Private Road
+            ignorePLR: true, // Parking Lot Road
+            ignoreUnnamedPR: true, // Ignore Unnamed Private Road
         };
         const storedOptions = localStorage.getItem("WMEMagicWandScript");
         const options = !storedOptions ? null : JSON.parse(storedOptions);
@@ -256,6 +274,12 @@ NEW:<br>
         }
         else {
             console.log("MagicWand: local settings are used");
+        }
+        if (MWSettings.ignorePLR) {
+            $("#mw-ignorePLR").trigger("click");
+        }
+        if (MWSettings.ignoreUnnamedPR) {
+            $("#mw-ignoreunnamePR").trigger("click");
         }
         // for (let i = 0; i < getElId("_sMagicWandLandmark")?.options.length; i++) {
         //     if (getElId("_sMagicWandLandmark")?.options[i].value === options[2]) {
@@ -953,9 +977,9 @@ NEW:<br>
                     segmentType === 16 ||
                     segmentType === 18 ||
                     segmentType === 19 ||
-                    (MWSettings._ignorePLR && segmentType === 20))
+                    (MWSettings.ignorePLR && segmentType === 20))
                     continue;
-                if (MWSettings._ignoreUnnamedPR && segmentType === 17) {
+                if (MWSettings.ignoreUnnamedPR && segmentType === 17) {
                     const primaryStreetId = s.primaryStreetId;
                     if (!primaryStreetId)
                         continue;
