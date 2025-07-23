@@ -5,7 +5,7 @@
 // @namespace           http://en.advisor.travel/wme-magic-wand
 // @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it
 // @include             https://beta.waze.com/*
-// @version             2025.07.20.001
+// @version             2025.07.21.001
 // @require             https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js
 // @require             https://cdn.jsdelivr.net/npm/proj4@2.16.2/dist/proj4.min.js
 // @require             https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
@@ -648,6 +648,12 @@ NEW:<br>
                 is_reload_tiles = true;
             },
         });
+        sdk.Events.on({
+            eventName: "wme-map-zoom-changed",
+            eventHandler: () => {
+                is_reload_tiles = true;
+            },
+        });
         // W.map.events.register("changebaselayer", null, () => {
         //     is_reload_tiles = true;
         // });
@@ -806,7 +812,7 @@ NEW:<br>
             return [canvas_data[offset], canvas_data[offset + 1], canvas_data[offset + 2], canvas_data[offset + 3]];
         }
         function getPixelAverageSample(canvas_data, x, y) {
-            let sample_info;
+            let sample_info = [];
             const average = [0, 0, 0, 0];
             let total_samples = 0;
             for (let xi = x - sampling; xi < x + sampling; xi++) {
@@ -844,14 +850,10 @@ NEW:<br>
             let processed_pixels = {};
             const polyPixels = [];
             let g = 0;
-            let minX = Number.MAX_VALUE;
-            let first_pixel;
             const stack = [[clickCanvasX, clickCanvasY]];
             let x;
             let y;
             let c_pixel;
-            let viewX;
-            let viewY;
             updateStatus("Processing tiles image");
             const id = draw_canvas_context?.createImageData(1, 1);
             const d = id?.data;
@@ -885,19 +887,8 @@ NEW:<br>
                 c_pixel = getPixelAverageSample(canvas_data, x, y);
                 if ((color_algorithm === "sensitivity" && !colorDistance(c_pixel, ref_pixel)) ||
                     (color_algorithm === "LAB" && calcColorDistance(c_pixel, ref_pixel) > color_distance)) {
-                    viewX = x + viewOffsetX;
-                    viewY = y + viewOffsetY;
-                    if (viewX < minX) {
-                        minX = viewX;
-                        first_pixel = [viewX, viewY];
-                    }
-                    else if (viewX === minX && first_pixel !== undefined && viewY < first_pixel[1]) {
-                        first_pixel = [viewX, viewY];
-                    }
                     // Outer pixel found
-                    polyPixels.push([viewX, viewY]);
-                }
-                else {
+                    polyPixels.push([x + viewOffsetX, y + viewOffsetY]);
                     // Inner point, add neighboring points to the stack
                     if (!processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]}`]) {
                         stack.push([current_pixel[0] - 1, current_pixel[1]]);
@@ -905,24 +896,24 @@ NEW:<br>
                     if (!processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}`]) {
                         stack.push([current_pixel[0] + 1, current_pixel[1]]);
                     }
-                    if (processed_pixels[`${current_pixel[0]},${current_pixel[1]} - 1`]) {
+                    if (!processed_pixels[`${current_pixel[0]},${current_pixel[1] - 1}`]) {
                         stack.push([current_pixel[0], current_pixel[1] - 1]);
                     }
-                    if (processed_pixels[`${current_pixel[0]},${current_pixel[1]}${1}`] === undefined) {
+                    if (!processed_pixels[`${current_pixel[0]},${current_pixel[1] + 1}`]) {
                         stack.push([current_pixel[0], current_pixel[1] + 1]);
                     }
                     // Experimental: with diagonal pixels
-                    if (processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}${1}`] === undefined) {
-                        stack.push([current_pixel[0], current_pixel[1] + 1]);
+                    if (!processed_pixels[`${current_pixel[0] + 1},${current_pixel[1] + 1}`]) {
+                        stack.push([current_pixel[0] + 1, current_pixel[1] + 1]);
                     }
-                    if (processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]} - 1`] === undefined) {
-                        stack.push([current_pixel[0], current_pixel[1] + 1]);
+                    if (!processed_pixels[`${current_pixel[0] + 1},${current_pixel[1] - 1}`]) {
+                        stack.push([current_pixel[0] + 1, current_pixel[1] - 1]);
                     }
-                    if (processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]}${1}`] === undefined) {
-                        stack.push([current_pixel[0], current_pixel[1] + 1]);
+                    if (!processed_pixels[`${current_pixel[0] - 1},${current_pixel[1] + 1}`]) {
+                        stack.push([current_pixel[0] - 1, current_pixel[1] + 1]);
                     }
-                    if (processed_pixels[`${current_pixel[0] - 1},${current_pixel[1] - 1}`] === undefined) {
-                        stack.push([current_pixel[0], current_pixel[1] + 1]);
+                    if (!processed_pixels[`${current_pixel[0] - 1},${current_pixel[1] - 1}`]) {
+                        stack.push([current_pixel[0] - 1, current_pixel[1] - 1]);
                     }
                 }
             }
@@ -954,10 +945,11 @@ NEW:<br>
             updateStatus(status_msg);
         }
         function colorDistance(c_pixel, ref_pixel) {
-            return (Math.abs(c_pixel[0] - ref_pixel[0]) <= color_sensitivity &&
+            const within_sensitivity = Math.abs(c_pixel[0] - ref_pixel[0]) <= color_sensitivity &&
                 Math.abs(c_pixel[1] - ref_pixel[1]) <= color_sensitivity &&
                 Math.abs(c_pixel[2] - ref_pixel[2]) <= color_sensitivity &&
-                Math.abs(c_pixel[3] - ref_pixel[3]) <= color_sensitivity);
+                Math.abs(c_pixel[3] - ref_pixel[3]) <= color_sensitivity;
+            return !within_sensitivity;
         }
         /**
          * Finds the closest on-screen drivable segment to the given point, ignoring PLR and PR segments if the options are set
@@ -1016,6 +1008,9 @@ NEW:<br>
             //     LineString = LineString.simplify(simplify);
             // }
             const polygon = turf.polygon([polyPoints]);
+            if (!turf.booleanValid(polygon)) {
+                resetProcessState("Please, try again, polygon is not valid");
+            }
             const centeroid = turf.centroid(polygon);
             const segment = findClosestSegment(centeroid.geometry);
             const v = sdk.DataModel.Venues.addVenue({ category: landmark_type, geometry: polygon.geometry });
