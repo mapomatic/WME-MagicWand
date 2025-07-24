@@ -60,6 +60,20 @@ function magicwand() {
         return;
     }
 
+    enum DEBUG_LEVEL {
+        NONE = 0,
+        ERROR = 1,
+        WARN = 2,
+        INFO = 3,
+        DEBUG = 4,
+        TRACE = 5,
+    };
+    const LOGGING_LEVEL = DEBUG_LEVEL.INFO; // Set the logging level for the script
+
+    let storedClickCanvasX: number | undefined;
+    let storedClickCanvasY: number | undefined;
+    let storedViewOffsetX: number | undefined;
+    let storedViewOffsetY: number | undefined;
     // const wmelmw_version = GM_info.script.version;
     interface MWOptions {
         [key: string]: number | boolean | string;
@@ -937,6 +951,22 @@ NEW:<br>
                     if (is_reload_tiles) {
                         waitForLoad();
                     } else {
+                        if(LOGGING_LEVEL >= DEBUG_LEVEL.DEBUG)
+                            if(!storedClickCanvasX || !storedClickCanvasY || !storedViewOffsetX || !storedViewOffsetY) {
+                                storedClickCanvasX = clickCanvasX;
+                                storedClickCanvasY = clickCanvasY;
+                                storedViewOffsetX = viewOffsetX;
+                                storedViewOffsetY = viewOffsetY;
+                            }
+                            else {
+                                clickCanvasX = storedClickCanvasX;
+                                clickCanvasY = storedClickCanvasY;
+                                viewOffsetX = storedViewOffsetX;
+                                viewOffsetY = storedViewOffsetY;
+
+                            }
+                            console.debug(`WME MagicWand: clickCanvasX=${clickCanvasX}, clickCanvasY=${clickCanvasY}, viewOffsetX=${viewOffsetX}, viewOffsetY=${viewOffsetY}`);
+                        }
                         process();
                     }
                 } catch (ex) {

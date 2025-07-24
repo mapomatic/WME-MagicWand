@@ -53,6 +53,21 @@ function magicwand() {
         }, 100);
         return;
     }
+    let DEBUG_LEVEL;
+    (function (DEBUG_LEVEL) {
+        DEBUG_LEVEL[DEBUG_LEVEL["NONE"] = 0] = "NONE";
+        DEBUG_LEVEL[DEBUG_LEVEL["ERROR"] = 1] = "ERROR";
+        DEBUG_LEVEL[DEBUG_LEVEL["WARN"] = 2] = "WARN";
+        DEBUG_LEVEL[DEBUG_LEVEL["INFO"] = 3] = "INFO";
+        DEBUG_LEVEL[DEBUG_LEVEL["DEBUG"] = 4] = "DEBUG";
+        DEBUG_LEVEL[DEBUG_LEVEL["TRACE"] = 5] = "TRACE";
+    })(DEBUG_LEVEL || (DEBUG_LEVEL = {}));
+    ;
+    const LOGGING_LEVEL = DEBUG_LEVEL.INFO; // Set the logging level for the script
+    let storedClickCanvasX;
+    let storedClickCanvasY;
+    let storedViewOffsetX;
+    let storedViewOffsetY;
     let MWSettings;
     let lastSaveTime = 0;
     let magic_wand_process = false;
@@ -781,647 +796,662 @@ NEW:<br>
                         waitForLoad();
                     }
                     else {
-                        process();
+                        if (LOGGING_LEVEL >= DEBUG_LEVEL.DEBUG)
+                            if (!storedClickCanvasX || !storedClickCanvasY || !storedViewOffsetX || !storedViewOffsetY) {
+                                storedClickCanvasX = clickCanvasX;
+                                storedClickCanvasY = clickCanvasY;
+                                storedViewOffsetX = viewOffsetX;
+                                storedViewOffsetY = viewOffsetY;
+                            }
+                            else {
+                                clickCanvasX = storedClickCanvasX;
+                                clickCanvasY = storedClickCanvasY;
+                                viewOffsetX = storedViewOffsetX;
+                                viewOffsetY = storedViewOffsetY;
+                            }
+                        console.debug(`WME MagicWand: clickCanvasX=${clickCanvasX}, clickCanvasY=${clickCanvasY}, viewOffsetX=${viewOffsetX}, viewOffsetY=${viewOffsetY}`);
                     }
-                }
-                catch (ex) {
-                    console.log(ex);
+                    process();
                 }
                 finally {
-                    magic_wand_process = false;
                 }
-            },
+            }, catch(ex) {
+                console.log(ex);
+            }, finally: {
+                magic_wand_process = false
+            }
         });
-        function waitForLoad() {
-            waited_for++;
-            if (total_tiles > 0) {
-                if (waited_for > 25) {
-                    alert(`Waiting too long for tiles to be reloaded, tiles left to load: ${total_tiles}`);
-                    resetProcessState();
-                    return;
-                }
-                setTimeout(waitForLoad, 200);
-            }
-            else {
-                is_reload_tiles = false;
-                process();
-            }
-        }
-        function getPixelInfo(canvas_data, x, y) {
-            const offset = (y * canvas.width + x) * 4;
-            return [canvas_data[offset], canvas_data[offset + 1], canvas_data[offset + 2], canvas_data[offset + 3]];
-        }
-        function getPixelAverageSample(canvas_data, x, y) {
-            let sample_info = [];
-            const average = [0, 0, 0, 0];
-            let total_samples = 0;
-            for (let xi = x - sampling; xi < x + sampling; xi++) {
-                for (let yi = y - sampling; yi < y + sampling; yi++) {
-                    if (xi < 0 || yi < 0 || xi >= canvas.width || yi >= canvas.height) {
-                        continue;
-                    }
-                    total_samples++;
-                    sample_info = getPixelInfo(canvas_data, xi, yi);
-                    average[0] += sample_info[0];
-                    average[1] += sample_info[1];
-                    average[2] += sample_info[2];
-                    average[3] += sample_info[3];
-                }
-            }
-            return [
-                average[0] / total_samples,
-                average[1] / total_samples,
-                average[2] / total_samples,
-                average[3] / total_samples,
-            ];
-        }
-        function process() {
-            let canvas_data = context?.getImageData(0, 0, canvas.width, canvas.height, {}).data;
-            if (!canvas_data) {
-                resetProcessState("Canvas data is not available");
+    }
+    ;
+    function waitForLoad() {
+        waited_for++;
+        if (total_tiles > 0) {
+            if (waited_for > 25) {
+                alert(`Waiting too long for tiles to be reloaded, tiles left to load: ${total_tiles}`);
+                resetProcessState();
                 return;
             }
-            const ref_pixel = getPixelInfo(canvas_data, clickCanvasX, clickCanvasY);
-            const draw_canvas_context = draw_canvas.getContext("2d");
-            draw_canvas_context?.drawImage(canvas, 0, 0);
-            $("#_dMagicWandColorpicker").css("background-color", `rgb(${ref_pixel[0]},${ref_pixel[1]},${ref_pixel[2]})`);
-            $("#magicwand_common").hide().show();
-            let current_pixel;
-            let processed_pixels = {};
-            const polyPixels = [];
-            let g = 0;
-            const stack = [[clickCanvasX, clickCanvasY]];
-            let x;
-            let y;
-            let c_pixel;
-            updateStatus("Processing tiles image");
-            const id = draw_canvas_context?.createImageData(1, 1);
-            const d = id?.data;
-            if (!d) {
-                resetProcessState("Canvas data is not available");
-                return;
-            }
-            d[0] = 255;
-            d[1] = 0;
-            d[2] = 0;
-            d[3] = 255; // red
-            while (stack.length > 0 && g < 1500000) {
-                g++;
-                current_pixel = stack.pop();
-                if (!current_pixel) {
-                    continue;
-                }
-                // Already processed before
-                if (processed_pixels[`${current_pixel[0]},${current_pixel[1]}`]) {
-                    continue;
-                }
-                else {
-                    processed_pixels[`${current_pixel[0]},${current_pixel[1]}`] = true;
-                }
-                if (current_pixel[0] < 0 || current_pixel[0] >= canvas.width)
-                    continue;
-                if (current_pixel[1] < 0 || current_pixel[1] >= canvas.height)
-                    continue;
-                x = current_pixel[0];
-                y = current_pixel[1];
-                c_pixel = getPixelAverageSample(canvas_data, x, y);
-                if ((color_algorithm === "sensitivity" && !colorDistance(c_pixel, ref_pixel)) ||
-                    (color_algorithm === "LAB" && calcColorDistance(c_pixel, ref_pixel) > color_distance)) {
-                    // Outer pixel found
-                    polyPixels.push([x + viewOffsetX, y + viewOffsetY]);
-                    // Inner point, add neighboring points to the stack
-                    if (!processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]}`]) {
-                        stack.push([current_pixel[0] - 1, current_pixel[1]]);
-                    }
-                    if (!processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}`]) {
-                        stack.push([current_pixel[0] + 1, current_pixel[1]]);
-                    }
-                    if (!processed_pixels[`${current_pixel[0]},${current_pixel[1] - 1}`]) {
-                        stack.push([current_pixel[0], current_pixel[1] - 1]);
-                    }
-                    if (!processed_pixels[`${current_pixel[0]},${current_pixel[1] + 1}`]) {
-                        stack.push([current_pixel[0], current_pixel[1] + 1]);
-                    }
-                    // Experimental: with diagonal pixels
-                    if (!processed_pixels[`${current_pixel[0] + 1},${current_pixel[1] + 1}`]) {
-                        stack.push([current_pixel[0] + 1, current_pixel[1] + 1]);
-                    }
-                    if (!processed_pixels[`${current_pixel[0] + 1},${current_pixel[1] - 1}`]) {
-                        stack.push([current_pixel[0] + 1, current_pixel[1] - 1]);
-                    }
-                    if (!processed_pixels[`${current_pixel[0] - 1},${current_pixel[1] + 1}`]) {
-                        stack.push([current_pixel[0] - 1, current_pixel[1] + 1]);
-                    }
-                    if (!processed_pixels[`${current_pixel[0] - 1},${current_pixel[1] - 1}`]) {
-                        stack.push([current_pixel[0] - 1, current_pixel[1] - 1]);
-                    }
-                }
-            }
-            // Clear unnecessary data
-            processed_pixels = {};
-            current_pixel = [];
-            canvas_data = [];
-            let points = [];
-            if (polyPixels.length > 2) {
-                updateStatus("Computing convex hull");
-                for (let j = 0; j < polyPixels.length; j++) {
-                    points.push(new MagicPoint([polyPixels[j][0], polyPixels[j][1]]));
-                }
-                const convolutionHull = hull(points, 40, true);
-                createLandmark(convolutionHull /* , simplify_param */);
-            }
-            else {
-                points = [];
-                resetProcessState("Please, try again, no useful points found");
-                return;
-            }
-            points = [];
-            resetProcessState();
-            toggleMagicWandProcessing("#_bMagicWandProcessClick");
+            setTimeout(waitForLoad, 200);
         }
-        function resetProcessState(status_msg = null) {
-            status_msg = !status_msg ? "Waiting for click" : status_msg;
-            magic_wand_process = false;
-            updateStatus(status_msg);
-        }
-        function colorDistance(c_pixel, ref_pixel) {
-            const within_sensitivity = Math.abs(c_pixel[0] - ref_pixel[0]) <= color_sensitivity &&
-                Math.abs(c_pixel[1] - ref_pixel[1]) <= color_sensitivity &&
-                Math.abs(c_pixel[2] - ref_pixel[2]) <= color_sensitivity &&
-                Math.abs(c_pixel[3] - ref_pixel[3]) <= color_sensitivity;
-            return !within_sensitivity;
-        }
-        /**
-         * Finds the closest on-screen drivable segment to the given point, ignoring PLR and PR segments if the options are set
-         * Similar to WazeWrap.Util just using turf.
-         * @function WazeWrap.Geometry.findSDKClosestSegment
-         * @param {GeoJSON.Point} The given point to find the closest segment to
-         * @param {boolean} If true, Parking Lot Road segments will be ignored when finding the closest segment
-         * @param {boolean} If true, Private Road segments will be ignored when finding the closest segment
-         * @returns {Object} Returns an Object containing the Segment and Closest Point on the Segment
-         **/
-        function findClosestSegment(myPoint) {
-            let minDistance = Number.POSITIVE_INFINITY;
-            let closestSegment = null;
-            for (const s of sdk.DataModel.Segments.getAll()) {
-                const segmentType = s.roadType;
-                if (segmentType === 10 ||
-                    segmentType === 16 ||
-                    segmentType === 18 ||
-                    segmentType === 19 ||
-                    (MWSettings.ignorePLR && segmentType === 20))
-                    continue;
-                if (MWSettings.ignoreUnnamedPR && segmentType === 17) {
-                    const primaryStreetId = s.primaryStreetId;
-                    if (!primaryStreetId)
-                        continue;
-                    const nm = sdk.DataModel.Streets.getById({ streetId: primaryStreetId })?.name;
-                    if (!nm || nm === null || nm.trim().length === 0)
-                        //PR
-                        continue;
-                }
-                const distanceToSegment = turf.pointToLineDistance(myPoint, s.geometry);
-                if (distanceToSegment < minDistance) {
-                    minDistance = distanceToSegment;
-                    closestSegment = s;
-                }
-            }
-            return closestSegment;
-        }
-        function createLandmark(points /* , simplify */) {
-            if (points.length < 3) {
-                resetProcessState("Please, try again, not enough points found");
-                return;
-            }
-            const polyPoints = points.map((p) => {
-                if (p instanceof MagicPoint)
-                    return p.toPosition();
-                return p;
-            });
-            for (let k = 0; k < polyPoints.length; k++) {
-                const o = polyPoints[k];
-                const point_lonlat = sdk.Map.getLonLatFromPixel({ x: o[0], y: o[1] });
-                polyPoints[k] = [point_lonlat.lon, point_lonlat.lat];
-            }
-            // const LineString = new OpenLayers.Geometry.LineString(polyPoints);
-            // if (simplify > 0) {
-            //     LineString = LineString.simplify(simplify);
-            // }
-            const polygon = turf.polygon([polyPoints]);
-            if (!turf.booleanValid(polygon)) {
-                resetProcessState("Please, try again, polygon is not valid");
-            }
-            const centeroid = turf.centroid(polygon);
-            const segment = findClosestSegment(centeroid.geometry);
-            const v = sdk.DataModel.Venues.addVenue({ category: landmark_type, geometry: polygon.geometry });
-            if (segment?.primaryStreetId) {
-                sdk.DataModel.Venues.updateAddress({ streetId: segment.primaryStreetId, venueId: v.toString() });
-            }
-            // const WazefeatureVectorLandmark = require("Waze/Feature/Vector/Landmark");
-            // const WazeActionAddLandmark = require("Waze/Action/AddLandmark");
-            // const landmark = new WazefeatureVectorLandmark({ geoJSONGeometry: polygon });
-            // landmark.attributes.categories = [landmark_type];
-            // W.model.actionManager.add(new WazeActionAddLandmark(landmark));
-        }
-        //
-        // Human-eye Similarity algorithm below
-        //
-        function calcColorDistance(c_pixel, r_pixel) {
-            let xyz = rgbToXyz(c_pixel[0], c_pixel[1], c_pixel[2]);
-            const lab = xyzToLab(xyz[0], xyz[1], xyz[2]);
-            xyz = rgbToXyz(r_pixel[0], r_pixel[1], r_pixel[2]);
-            const target_lab = xyzToLab(xyz[0], xyz[1], xyz[2]);
-            return cie1994(lab, target_lab, false);
-        }
-        // Convert RGB to XYZ
-        function rgbToXyz(r, g, b) {
-            let _r = r / 255;
-            let _g = g / 255;
-            let _b = b / 255;
-            if (_r > 0.04045) {
-                _r = ((_r + 0.055) / 1.055) ** 2.4;
-            }
-            else {
-                _r /= 12.92;
-            }
-            if (_g > 0.04045) {
-                _g = ((_g + 0.055) / 1.055) ** 2.4;
-            }
-            else {
-                _g /= 12.92;
-            }
-            if (_b > 0.04045) {
-                _b = ((_b + 0.055) / 1.055) ** 2.4;
-            }
-            else {
-                _b /= 12.92;
-            }
-            _r *= 100;
-            _g *= 100;
-            _b *= 100;
-            const X = _r * 0.4124 + _g * 0.3576 + _b * 0.1805;
-            const Y = _r * 0.2126 + _g * 0.7152 + _b * 0.0722;
-            const Z = _r * 0.0193 + _g * 0.1192 + _b * 0.9505;
-            return [X, Y, Z];
-        }
-        // Convert XYZ to LAB
-        function xyzToLab(x, y, z) {
-            const ref_X = 95.047;
-            const ref_Y = 100.0;
-            const ref_Z = 108.883;
-            let _X = x / ref_X;
-            let _Y = y / ref_Y;
-            let _Z = z / ref_Z;
-            if (_X > 0.008856) {
-                _X **= 1 / 3;
-            }
-            else {
-                _X = 7.787 * _X + 16 / 116;
-            }
-            if (_Y > 0.008856) {
-                _Y **= 1 / 3;
-            }
-            else {
-                _Y = 7.787 * _Y + 16 / 116;
-            }
-            if (_Z > 0.008856) {
-                _Z **= 1 / 3;
-            }
-            else {
-                _Z = 7.787 * _Z + 16 / 116;
-            }
-            const CIE_L = 116 * _Y - 16;
-            const CIE_a = 500 * (_X - _Y);
-            const CIE_b = 200 * (_Y - _Z);
-            return [CIE_L, CIE_a, CIE_b];
-        }
-        function getLocation(href) {
-            const l = document.createElement("a");
-            l.href = href;
-            return l;
-        }
-        // Finally, use cie1994 to get delta-e using LAB
-        function cie1994(pointX, pointY, isTextiles) {
-            const x = { l: pointX[0], a: pointX[1], b: pointX[2] };
-            const y = { l: pointY[0], a: pointY[1], b: pointY[2] };
-            let k2;
-            let k1;
-            let kl;
-            const kh = 1;
-            const kc = 1;
-            if (isTextiles) {
-                k2 = 0.014;
-                k1 = 0.048;
-                kl = 2;
-            }
-            else {
-                k2 = 0.015;
-                k1 = 0.045;
-                kl = 1;
-            }
-            const c1 = Math.sqrt(x.a * x.a + x.b * x.b);
-            const c2 = Math.sqrt(y.a * y.a + y.b * y.b);
-            const sh = 1 + k2 * c1;
-            const sc = 1 + k1 * c1;
-            const sl = 1;
-            const da = x.a - y.a;
-            const db = x.b - y.b;
-            const dc = c1 - c2;
-            const dl = x.l - y.l;
-            const dh = Math.sqrt(da * da + db * db - dc * dc);
-            return Math.sqrt((dl / (kl * sl)) ** 2 + (dc / (kc * sc)) ** 2 + (dh / (kh * sh)) ** 2);
-        }
-        // intersect.js
-        function ccw(x1, y1, x2, y2, x3, y3) {
-            const cw = (y3 - y1) * (x2 - x1) - (y2 - y1) * (x3 - x1);
-            return cw > 0 ? true : !(cw < 0); // colinear
-        }
-        function intersect(seg1, seg2) {
-            const x1 = seg1[0][0];
-            const y1 = seg1[0][1];
-            const x2 = seg1[1][0];
-            const y2 = seg1[1][1];
-            const x3 = seg2[0][0];
-            const y3 = seg2[0][1];
-            const x4 = seg2[1][0];
-            const y4 = seg2[1][1];
-            return (ccw(x1, y1, x3, y3, x4, y4) !== ccw(x2, y2, x3, y3, x4, y4) &&
-                ccw(x1, y1, x2, y2, x3, y3) !== ccw(x1, y1, x2, y2, x4, y4));
-        }
-        // grid.js
-        class Grid {
-            _cellSize;
-            _cells;
-            constructor(points, cellSize) {
-                this._cells = [];
-                this._cellSize = cellSize;
-                points.forEach(function gridPoint(point) {
-                    const cellXY = this.point2CellXY(point);
-                    const x = cellXY[0];
-                    const y = cellXY[1];
-                    if (this._cells[x] === undefined) {
-                        this._cells[x] = [];
-                    }
-                    if (this._cells[x][y] === undefined) {
-                        this._cells[x][y] = [];
-                    }
-                    this._cells[x][y].push(point);
-                }, this);
-            }
-            cellPoints(x, y) {
-                // (Number, Number) -> Array
-                return this._cells[x] !== undefined && this._cells[x][y] !== undefined ? this._cells[x][y] : [];
-            }
-            rangePoints(bbox) {
-                // (Array) -> Array
-                const tlCellXY = this.point2CellXY([bbox[0], bbox[1]]);
-                const brCellXY = this.point2CellXY([bbox[2], bbox[3]]);
-                let points = [];
-                for (let x = tlCellXY[0]; x <= brCellXY[0]; x++) {
-                    for (let y = tlCellXY[1]; y <= brCellXY[1]; y++) {
-                        points = points.concat(this.cellPoints(x, y));
-                    }
-                }
-                return points;
-            }
-            removePoint(point) {
-                // (Array) -> Array
-                const cellXY = this.point2CellXY(point);
-                const cell = this._cells[cellXY[0]][cellXY[1]];
-                let pointIdxInCell;
-                for (let i = 0; i < cell.length; i++) {
-                    if (cell[i][0] === point[0] && cell[i][1] === point[1]) {
-                        pointIdxInCell = i;
-                        break;
-                    }
-                }
-                cell.splice(pointIdxInCell, 1);
-                return cell;
-            }
-            point2CellXY(point) {
-                // (Array) -> Array
-                const x = Math.floor(point[0] / this._cellSize);
-                const y = Math.floor(point[1] / this._cellSize);
-                return [x, y];
-            }
-            extendBbox(bbox, scaleFactor) {
-                // (Array, Number) -> Array
-                return [
-                    bbox[0] - scaleFactor * this._cellSize,
-                    bbox[1] - scaleFactor * this._cellSize,
-                    bbox[2] + scaleFactor * this._cellSize,
-                    bbox[3] + scaleFactor * this._cellSize,
-                ];
-            }
-        }
-        function grid(points, cellSize) {
-            return new Grid(points, cellSize);
-        }
-        // format.js
-        const formatUtil = {
-            toPosition(pointset, format = false) {
-                if (!format) {
-                    return pointset.slice();
-                }
-                return pointset.map((pt) => { if (pt instanceof MagicPoint)
-                    return pt.toPosition(); return pt; });
-            },
-            toMagicPoint(pointset, format = false) {
-                if (format === undefined) {
-                    return pointset.slice();
-                }
-                return pointset.map((pt) => { return new MagicPoint(pt); });
-            },
-        };
-        // convex.js
-        function _cross(o, a, b) {
-            return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-        }
-        function _upperTangent(pointset) {
-            const lower = [];
-            for (let l = 0; l < pointset.length; l++) {
-                while (lower.length >= 2 &&
-                    _cross(lower[lower.length - 2], lower[lower.length - 1], pointset[l]) <= 0) {
-                    lower.pop();
-                }
-                lower.push(pointset[l]);
-            }
-            lower.pop();
-            return lower;
-        }
-        function _lowerTangent(pointset) {
-            const reversed = pointset.reverse();
-            const upper = [];
-            for (let u = 0; u < reversed.length; u++) {
-                while (upper.length >= 2 &&
-                    _cross(upper[upper.length - 2], upper[upper.length - 1], reversed[u]) <= 0) {
-                    upper.pop();
-                }
-                upper.push(reversed[u]);
-            }
-            upper.pop();
-            return upper;
-        }
-        // pointset has to be sorted by X
-        function convex(pointset) {
-            const upper = _upperTangent(pointset);
-            const lower = _lowerTangent(pointset);
-            const result = lower.concat(upper);
-            result.push(pointset[0]);
-            return result;
-        }
-        // hull.js
-        function _filterDuplicates(pointset) {
-            let filteredPointset = pointset.filter((el, idx, arr) => {
-                const prevEl = arr[idx - 1];
-                return idx === 0 || !(prevEl[0] === el[0] && prevEl[1] === el[1]);
-            });
-            if (filteredPointset.length > 0 && filteredPointset[0] instanceof MagicPoint) {
-                filteredPointset = formatUtil.toPosition(filteredPointset, true);
-            }
-            return filteredPointset;
-        }
-        function _sortByX(pointset) {
-            return pointset.sort((a, b) => {
-                if (a[0] === b[0]) {
-                    return a[1] - b[1];
-                }
-                return a[0] - b[0];
-            });
-        }
-        function _sqLength(a, b) {
-            return (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2;
-        }
-        function _cos(o, a, b) {
-            const aShifted = [a[0] - o[0], a[1] - o[1]];
-            const bShifted = [b[0] - o[0], b[1] - o[1]];
-            const sqALen = _sqLength(o, a);
-            const sqBLen = _sqLength(o, b);
-            const dot = aShifted[0] * bShifted[0] + aShifted[1] * bShifted[1];
-            return dot / Math.sqrt(sqALen * sqBLen);
-        }
-        function _intersect(segment, pointset) {
-            for (let i = 0; i < pointset.length - 1; i++) {
-                const seg = [pointset[i], pointset[i + 1]];
-                if ((segment[0][0] === seg[0][0] && segment[0][1] === seg[0][1]) ||
-                    (segment[0][0] === seg[1][0] && segment[0][1] === seg[1][1])) {
-                    continue;
-                }
-                if (intersect(segment, seg)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        function _occupiedArea(pointset) {
-            let minX = Infinity;
-            let minY = Infinity;
-            let maxX = -Infinity;
-            let maxY = -Infinity;
-            for (let i = pointset.length - 1; i >= 0; i--) {
-                if (pointset[i][0] < minX) {
-                    minX = pointset[i][0];
-                }
-                if (pointset[i][1] < minY) {
-                    minY = pointset[i][1];
-                }
-                if (pointset[i][0] > maxX) {
-                    maxX = pointset[i][0];
-                }
-                if (pointset[i][1] > maxY) {
-                    maxY = pointset[i][1];
-                }
-            }
-            return [
-                maxX - minX, // width
-                maxY - minY, // height
-            ];
-        }
-        function _bBoxAround(edge) {
-            return [
-                Math.min(edge[0][0], edge[1][0]), // left
-                Math.min(edge[0][1], edge[1][1]), // top
-                Math.max(edge[0][0], edge[1][0]), // right
-                Math.max(edge[0][1], edge[1][1]), // bottom
-            ];
-        }
-        // let MAX_CONCAVE_ANGLE_COS; // angle = 90 deg
-        // let MAX_SEARCH_BBOX_SIZE_PERCENT;
-        function _midPoint(edge, innerPoints, convex1) {
-            let point = null;
-            let angle1Cos = MAX_CONCAVE_ANGLE_COS;
-            let angle2Cos = MAX_CONCAVE_ANGLE_COS;
-            let a1Cos;
-            let a2Cos;
-            for (let i = 0; i < innerPoints.length; i++) {
-                a1Cos = _cos(edge[0], edge[1], innerPoints[i]);
-                a2Cos = _cos(edge[1], edge[0], innerPoints[i]);
-                if (a1Cos > angle1Cos &&
-                    a2Cos > angle2Cos &&
-                    !_intersect([edge[0], innerPoints[i]], convex1) &&
-                    !_intersect([edge[1], innerPoints[i]], convex1)) {
-                    angle1Cos = a1Cos;
-                    angle2Cos = a2Cos;
-                    point = innerPoints[i];
-                }
-            }
-            return point;
-        }
-        function _concave(convex1, maxSqEdgeLen, maxSearchArea, grid1, edgeSkipList) {
-            let edge;
-            let keyInSkipList;
-            let scaleFactor;
-            let midPoint;
-            let bBoxAround;
-            let bBoxWidth;
-            let bBoxHeight;
-            let midPointInserted = false;
-            for (let i = 0; i < convex1.length - 1; i++) {
-                edge = [convex1[i], convex1[i + 1]];
-                keyInSkipList = `${edge[0].join()},${edge[1].join()}`;
-                if (_sqLength(edge[0], edge[1]) < maxSqEdgeLen || edgeSkipList[keyInSkipList] === true) {
-                    continue;
-                }
-                scaleFactor = 0;
-                bBoxAround = _bBoxAround(edge);
-                do {
-                    bBoxAround = grid1.extendBbox(bBoxAround, scaleFactor);
-                    bBoxWidth = bBoxAround[2] - bBoxAround[0];
-                    bBoxHeight = bBoxAround[3] - bBoxAround[1];
-                    midPoint = _midPoint(edge, grid1.rangePoints(bBoxAround), convex1);
-                    scaleFactor++;
-                } while (midPoint === null && (maxSearchArea[0] > bBoxWidth || maxSearchArea[1] > bBoxHeight));
-                if (bBoxWidth >= maxSearchArea[0] && bBoxHeight >= maxSearchArea[1]) {
-                    edgeSkipList[keyInSkipList] = true;
-                }
-                if (midPoint !== null) {
-                    convex1.splice(i + 1, 0, midPoint);
-                    grid1.removePoint(midPoint);
-                    midPointInserted = true;
-                }
-            }
-            if (midPointInserted) {
-                return _concave(convex1, maxSqEdgeLen, maxSearchArea, grid1, edgeSkipList);
-            }
-            return convex1;
-        }
-        function hull(pointset, concavity, format = false) {
-            const maxEdgeLen = concavity || 20;
-            if (pointset.length < 4) {
-                return pointset.slice();
-            }
-            const points = _filterDuplicates(_sortByX(formatUtil.toPosition(pointset, format)));
-            const occupiedArea = _occupiedArea(points);
-            const maxSearchArea = [
-                occupiedArea[0] * MAX_SEARCH_BBOX_SIZE_PERCENT,
-                occupiedArea[1] * MAX_SEARCH_BBOX_SIZE_PERCENT,
-            ];
-            const convex1 = convex(points);
-            const innerPoints = points.filter((pt) => convex1.indexOf(pt) < 0);
-            const cellSize = Math.ceil(1 / (points.length / (occupiedArea[0] * occupiedArea[1])));
-            const concave = _concave(convex1, maxEdgeLen ** 2, maxSearchArea, grid(innerPoints, cellSize), {});
-            return formatUtil.toMagicPoint(concave, format);
+        else {
+            is_reload_tiles = false;
+            process();
         }
     }
-    initializeMagicWand();
+    function getPixelInfo(canvas_data, x, y) {
+        const offset = (y * canvas.width + x) * 4;
+        return [canvas_data[offset], canvas_data[offset + 1], canvas_data[offset + 2], canvas_data[offset + 3]];
+    }
+    function getPixelAverageSample(canvas_data, x, y) {
+        let sample_info = [];
+        const average = [0, 0, 0, 0];
+        let total_samples = 0;
+        for (let xi = x - sampling; xi < x + sampling; xi++) {
+            for (let yi = y - sampling; yi < y + sampling; yi++) {
+                if (xi < 0 || yi < 0 || xi >= canvas.width || yi >= canvas.height) {
+                    continue;
+                }
+                total_samples++;
+                sample_info = getPixelInfo(canvas_data, xi, yi);
+                average[0] += sample_info[0];
+                average[1] += sample_info[1];
+                average[2] += sample_info[2];
+                average[3] += sample_info[3];
+            }
+        }
+        return [
+            average[0] / total_samples,
+            average[1] / total_samples,
+            average[2] / total_samples,
+            average[3] / total_samples,
+        ];
+    }
+    function process() {
+        let canvas_data = context?.getImageData(0, 0, canvas.width, canvas.height, {}).data;
+        if (!canvas_data) {
+            resetProcessState("Canvas data is not available");
+            return;
+        }
+        const ref_pixel = getPixelInfo(canvas_data, clickCanvasX, clickCanvasY);
+        const draw_canvas_context = draw_canvas.getContext("2d");
+        draw_canvas_context?.drawImage(canvas, 0, 0);
+        $("#_dMagicWandColorpicker").css("background-color", `rgb(${ref_pixel[0]},${ref_pixel[1]},${ref_pixel[2]})`);
+        $("#magicwand_common").hide().show();
+        let current_pixel;
+        let processed_pixels = {};
+        const polyPixels = [];
+        let g = 0;
+        const stack = [[clickCanvasX, clickCanvasY]];
+        let x;
+        let y;
+        let c_pixel;
+        updateStatus("Processing tiles image");
+        const id = draw_canvas_context?.createImageData(1, 1);
+        const d = id?.data;
+        if (!d) {
+            resetProcessState("Canvas data is not available");
+            return;
+        }
+        d[0] = 255;
+        d[1] = 0;
+        d[2] = 0;
+        d[3] = 255; // red
+        while (stack.length > 0 && g < 1500000) {
+            g++;
+            current_pixel = stack.pop();
+            if (!current_pixel) {
+                continue;
+            }
+            // Already processed before
+            if (processed_pixels[`${current_pixel[0]},${current_pixel[1]}`]) {
+                continue;
+            }
+            else {
+                processed_pixels[`${current_pixel[0]},${current_pixel[1]}`] = true;
+            }
+            if (current_pixel[0] < 0 || current_pixel[0] >= canvas.width)
+                continue;
+            if (current_pixel[1] < 0 || current_pixel[1] >= canvas.height)
+                continue;
+            x = current_pixel[0];
+            y = current_pixel[1];
+            c_pixel = getPixelAverageSample(canvas_data, x, y);
+            if ((color_algorithm === "sensitivity" && !colorDistance(c_pixel, ref_pixel)) ||
+                (color_algorithm === "LAB" && calcColorDistance(c_pixel, ref_pixel) > color_distance)) {
+                // Outer pixel found
+                polyPixels.push([x + viewOffsetX, y + viewOffsetY]);
+                // Inner point, add neighboring points to the stack
+                if (!processed_pixels[`${current_pixel[0] - 1},${current_pixel[1]}`]) {
+                    stack.push([current_pixel[0] - 1, current_pixel[1]]);
+                }
+                if (!processed_pixels[`${current_pixel[0] + 1},${current_pixel[1]}`]) {
+                    stack.push([current_pixel[0] + 1, current_pixel[1]]);
+                }
+                if (!processed_pixels[`${current_pixel[0]},${current_pixel[1] - 1}`]) {
+                    stack.push([current_pixel[0], current_pixel[1] - 1]);
+                }
+                if (!processed_pixels[`${current_pixel[0]},${current_pixel[1] + 1}`]) {
+                    stack.push([current_pixel[0], current_pixel[1] + 1]);
+                }
+                // Experimental: with diagonal pixels
+                if (!processed_pixels[`${current_pixel[0] + 1},${current_pixel[1] + 1}`]) {
+                    stack.push([current_pixel[0] + 1, current_pixel[1] + 1]);
+                }
+                if (!processed_pixels[`${current_pixel[0] + 1},${current_pixel[1] - 1}`]) {
+                    stack.push([current_pixel[0] + 1, current_pixel[1] - 1]);
+                }
+                if (!processed_pixels[`${current_pixel[0] - 1},${current_pixel[1] + 1}`]) {
+                    stack.push([current_pixel[0] - 1, current_pixel[1] + 1]);
+                }
+                if (!processed_pixels[`${current_pixel[0] - 1},${current_pixel[1] - 1}`]) {
+                    stack.push([current_pixel[0] - 1, current_pixel[1] - 1]);
+                }
+            }
+        }
+        // Clear unnecessary data
+        processed_pixels = {};
+        current_pixel = [];
+        canvas_data = [];
+        let points = [];
+        if (polyPixels.length > 2) {
+            updateStatus("Computing convex hull");
+            for (let j = 0; j < polyPixels.length; j++) {
+                points.push(new MagicPoint([polyPixels[j][0], polyPixels[j][1]]));
+            }
+            const convolutionHull = hull(points, 40, true);
+            createLandmark(convolutionHull /* , simplify_param */);
+        }
+        else {
+            points = [];
+            resetProcessState("Please, try again, no useful points found");
+            return;
+        }
+        points = [];
+        resetProcessState();
+        toggleMagicWandProcessing("#_bMagicWandProcessClick");
+    }
+    function resetProcessState(status_msg = null) {
+        status_msg = !status_msg ? "Waiting for click" : status_msg;
+        magic_wand_process = false;
+        updateStatus(status_msg);
+    }
+    function colorDistance(c_pixel, ref_pixel) {
+        const within_sensitivity = Math.abs(c_pixel[0] - ref_pixel[0]) <= color_sensitivity &&
+            Math.abs(c_pixel[1] - ref_pixel[1]) <= color_sensitivity &&
+            Math.abs(c_pixel[2] - ref_pixel[2]) <= color_sensitivity &&
+            Math.abs(c_pixel[3] - ref_pixel[3]) <= color_sensitivity;
+        return !within_sensitivity;
+    }
+    /**
+     * Finds the closest on-screen drivable segment to the given point, ignoring PLR and PR segments if the options are set
+     * Similar to WazeWrap.Util just using turf.
+     * @function WazeWrap.Geometry.findSDKClosestSegment
+     * @param {GeoJSON.Point} The given point to find the closest segment to
+     * @param {boolean} If true, Parking Lot Road segments will be ignored when finding the closest segment
+     * @param {boolean} If true, Private Road segments will be ignored when finding the closest segment
+     * @returns {Object} Returns an Object containing the Segment and Closest Point on the Segment
+     **/
+    function findClosestSegment(myPoint) {
+        let minDistance = Number.POSITIVE_INFINITY;
+        let closestSegment = null;
+        for (const s of sdk.DataModel.Segments.getAll()) {
+            const segmentType = s.roadType;
+            if (segmentType === 10 ||
+                segmentType === 16 ||
+                segmentType === 18 ||
+                segmentType === 19 ||
+                (MWSettings.ignorePLR && segmentType === 20))
+                continue;
+            if (MWSettings.ignoreUnnamedPR && segmentType === 17) {
+                const primaryStreetId = s.primaryStreetId;
+                if (!primaryStreetId)
+                    continue;
+                const nm = sdk.DataModel.Streets.getById({ streetId: primaryStreetId })?.name;
+                if (!nm || nm === null || nm.trim().length === 0)
+                    //PR
+                    continue;
+            }
+            const distanceToSegment = turf.pointToLineDistance(myPoint, s.geometry);
+            if (distanceToSegment < minDistance) {
+                minDistance = distanceToSegment;
+                closestSegment = s;
+            }
+        }
+        return closestSegment;
+    }
+    function createLandmark(points /* , simplify */) {
+        if (points.length < 3) {
+            resetProcessState("Please, try again, not enough points found");
+            return;
+        }
+        const polyPoints = points.map((p) => {
+            if (p instanceof MagicPoint)
+                return p.toPosition();
+            return p;
+        });
+        for (let k = 0; k < polyPoints.length; k++) {
+            const o = polyPoints[k];
+            const point_lonlat = sdk.Map.getLonLatFromPixel({ x: o[0], y: o[1] });
+            polyPoints[k] = [point_lonlat.lon, point_lonlat.lat];
+        }
+        // const LineString = new OpenLayers.Geometry.LineString(polyPoints);
+        // if (simplify > 0) {
+        //     LineString = LineString.simplify(simplify);
+        // }
+        const polygon = turf.polygon([polyPoints]);
+        if (!turf.booleanValid(polygon)) {
+            resetProcessState("Please, try again, polygon is not valid");
+        }
+        const centeroid = turf.centroid(polygon);
+        const segment = findClosestSegment(centeroid.geometry);
+        const v = sdk.DataModel.Venues.addVenue({ category: landmark_type, geometry: polygon.geometry });
+        if (segment?.primaryStreetId) {
+            sdk.DataModel.Venues.updateAddress({ streetId: segment.primaryStreetId, venueId: v.toString() });
+        }
+        // const WazefeatureVectorLandmark = require("Waze/Feature/Vector/Landmark");
+        // const WazeActionAddLandmark = require("Waze/Action/AddLandmark");
+        // const landmark = new WazefeatureVectorLandmark({ geoJSONGeometry: polygon });
+        // landmark.attributes.categories = [landmark_type];
+        // W.model.actionManager.add(new WazeActionAddLandmark(landmark));
+    }
+    //
+    // Human-eye Similarity algorithm below
+    //
+    function calcColorDistance(c_pixel, r_pixel) {
+        let xyz = rgbToXyz(c_pixel[0], c_pixel[1], c_pixel[2]);
+        const lab = xyzToLab(xyz[0], xyz[1], xyz[2]);
+        xyz = rgbToXyz(r_pixel[0], r_pixel[1], r_pixel[2]);
+        const target_lab = xyzToLab(xyz[0], xyz[1], xyz[2]);
+        return cie1994(lab, target_lab, false);
+    }
+    // Convert RGB to XYZ
+    function rgbToXyz(r, g, b) {
+        let _r = r / 255;
+        let _g = g / 255;
+        let _b = b / 255;
+        if (_r > 0.04045) {
+            _r = ((_r + 0.055) / 1.055) ** 2.4;
+        }
+        else {
+            _r /= 12.92;
+        }
+        if (_g > 0.04045) {
+            _g = ((_g + 0.055) / 1.055) ** 2.4;
+        }
+        else {
+            _g /= 12.92;
+        }
+        if (_b > 0.04045) {
+            _b = ((_b + 0.055) / 1.055) ** 2.4;
+        }
+        else {
+            _b /= 12.92;
+        }
+        _r *= 100;
+        _g *= 100;
+        _b *= 100;
+        const X = _r * 0.4124 + _g * 0.3576 + _b * 0.1805;
+        const Y = _r * 0.2126 + _g * 0.7152 + _b * 0.0722;
+        const Z = _r * 0.0193 + _g * 0.1192 + _b * 0.9505;
+        return [X, Y, Z];
+    }
+    // Convert XYZ to LAB
+    function xyzToLab(x, y, z) {
+        const ref_X = 95.047;
+        const ref_Y = 100.0;
+        const ref_Z = 108.883;
+        let _X = x / ref_X;
+        let _Y = y / ref_Y;
+        let _Z = z / ref_Z;
+        if (_X > 0.008856) {
+            _X **= 1 / 3;
+        }
+        else {
+            _X = 7.787 * _X + 16 / 116;
+        }
+        if (_Y > 0.008856) {
+            _Y **= 1 / 3;
+        }
+        else {
+            _Y = 7.787 * _Y + 16 / 116;
+        }
+        if (_Z > 0.008856) {
+            _Z **= 1 / 3;
+        }
+        else {
+            _Z = 7.787 * _Z + 16 / 116;
+        }
+        const CIE_L = 116 * _Y - 16;
+        const CIE_a = 500 * (_X - _Y);
+        const CIE_b = 200 * (_Y - _Z);
+        return [CIE_L, CIE_a, CIE_b];
+    }
+    function getLocation(href) {
+        const l = document.createElement("a");
+        l.href = href;
+        return l;
+    }
+    // Finally, use cie1994 to get delta-e using LAB
+    function cie1994(pointX, pointY, isTextiles) {
+        const x = { l: pointX[0], a: pointX[1], b: pointX[2] };
+        const y = { l: pointY[0], a: pointY[1], b: pointY[2] };
+        let k2;
+        let k1;
+        let kl;
+        const kh = 1;
+        const kc = 1;
+        if (isTextiles) {
+            k2 = 0.014;
+            k1 = 0.048;
+            kl = 2;
+        }
+        else {
+            k2 = 0.015;
+            k1 = 0.045;
+            kl = 1;
+        }
+        const c1 = Math.sqrt(x.a * x.a + x.b * x.b);
+        const c2 = Math.sqrt(y.a * y.a + y.b * y.b);
+        const sh = 1 + k2 * c1;
+        const sc = 1 + k1 * c1;
+        const sl = 1;
+        const da = x.a - y.a;
+        const db = x.b - y.b;
+        const dc = c1 - c2;
+        const dl = x.l - y.l;
+        const dh = Math.sqrt(da * da + db * db - dc * dc);
+        return Math.sqrt((dl / (kl * sl)) ** 2 + (dc / (kc * sc)) ** 2 + (dh / (kh * sh)) ** 2);
+    }
+    // intersect.js
+    function ccw(x1, y1, x2, y2, x3, y3) {
+        const cw = (y3 - y1) * (x2 - x1) - (y2 - y1) * (x3 - x1);
+        return cw > 0 ? true : !(cw < 0); // colinear
+    }
+    function intersect(seg1, seg2) {
+        const x1 = seg1[0][0];
+        const y1 = seg1[0][1];
+        const x2 = seg1[1][0];
+        const y2 = seg1[1][1];
+        const x3 = seg2[0][0];
+        const y3 = seg2[0][1];
+        const x4 = seg2[1][0];
+        const y4 = seg2[1][1];
+        return (ccw(x1, y1, x3, y3, x4, y4) !== ccw(x2, y2, x3, y3, x4, y4) &&
+            ccw(x1, y1, x2, y2, x3, y3) !== ccw(x1, y1, x2, y2, x4, y4));
+    }
+    // grid.js
+    class Grid {
+        _cellSize;
+        _cells;
+        constructor(points, cellSize) {
+            this._cells = [];
+            this._cellSize = cellSize;
+            points.forEach(function gridPoint(point) {
+                const cellXY = this.point2CellXY(point);
+                const x = cellXY[0];
+                const y = cellXY[1];
+                if (this._cells[x] === undefined) {
+                    this._cells[x] = [];
+                }
+                if (this._cells[x][y] === undefined) {
+                    this._cells[x][y] = [];
+                }
+                this._cells[x][y].push(point);
+            }, this);
+        }
+        cellPoints(x, y) {
+            // (Number, Number) -> Array
+            return this._cells[x] !== undefined && this._cells[x][y] !== undefined ? this._cells[x][y] : [];
+        }
+        rangePoints(bbox) {
+            // (Array) -> Array
+            const tlCellXY = this.point2CellXY([bbox[0], bbox[1]]);
+            const brCellXY = this.point2CellXY([bbox[2], bbox[3]]);
+            let points = [];
+            for (let x = tlCellXY[0]; x <= brCellXY[0]; x++) {
+                for (let y = tlCellXY[1]; y <= brCellXY[1]; y++) {
+                    points = points.concat(this.cellPoints(x, y));
+                }
+            }
+            return points;
+        }
+        removePoint(point) {
+            // (Array) -> Array
+            const cellXY = this.point2CellXY(point);
+            const cell = this._cells[cellXY[0]][cellXY[1]];
+            let pointIdxInCell;
+            for (let i = 0; i < cell.length; i++) {
+                if (cell[i][0] === point[0] && cell[i][1] === point[1]) {
+                    pointIdxInCell = i;
+                    break;
+                }
+            }
+            cell.splice(pointIdxInCell, 1);
+            return cell;
+        }
+        point2CellXY(point) {
+            // (Array) -> Array
+            const x = Math.floor(point[0] / this._cellSize);
+            const y = Math.floor(point[1] / this._cellSize);
+            return [x, y];
+        }
+        extendBbox(bbox, scaleFactor) {
+            // (Array, Number) -> Array
+            return [
+                bbox[0] - scaleFactor * this._cellSize,
+                bbox[1] - scaleFactor * this._cellSize,
+                bbox[2] + scaleFactor * this._cellSize,
+                bbox[3] + scaleFactor * this._cellSize,
+            ];
+        }
+    }
+    function grid(points, cellSize) {
+        return new Grid(points, cellSize);
+    }
+    // format.js
+    const formatUtil = {
+        toPosition(pointset, format = false) {
+            if (!format) {
+                return pointset.slice();
+            }
+            return pointset.map((pt) => { if (pt instanceof MagicPoint)
+                return pt.toPosition(); return pt; });
+        },
+        toMagicPoint(pointset, format = false) {
+            if (format === undefined) {
+                return pointset.slice();
+            }
+            return pointset.map((pt) => { return new MagicPoint(pt); });
+        },
+    };
+    // convex.js
+    function _cross(o, a, b) {
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    }
+    function _upperTangent(pointset) {
+        const lower = [];
+        for (let l = 0; l < pointset.length; l++) {
+            while (lower.length >= 2 &&
+                _cross(lower[lower.length - 2], lower[lower.length - 1], pointset[l]) <= 0) {
+                lower.pop();
+            }
+            lower.push(pointset[l]);
+        }
+        lower.pop();
+        return lower;
+    }
+    function _lowerTangent(pointset) {
+        const reversed = pointset.reverse();
+        const upper = [];
+        for (let u = 0; u < reversed.length; u++) {
+            while (upper.length >= 2 &&
+                _cross(upper[upper.length - 2], upper[upper.length - 1], reversed[u]) <= 0) {
+                upper.pop();
+            }
+            upper.push(reversed[u]);
+        }
+        upper.pop();
+        return upper;
+    }
+    // pointset has to be sorted by X
+    function convex(pointset) {
+        const upper = _upperTangent(pointset);
+        const lower = _lowerTangent(pointset);
+        const result = lower.concat(upper);
+        result.push(pointset[0]);
+        return result;
+    }
+    // hull.js
+    function _filterDuplicates(pointset) {
+        let filteredPointset = pointset.filter((el, idx, arr) => {
+            const prevEl = arr[idx - 1];
+            return idx === 0 || !(prevEl[0] === el[0] && prevEl[1] === el[1]);
+        });
+        if (filteredPointset.length > 0 && filteredPointset[0] instanceof MagicPoint) {
+            filteredPointset = formatUtil.toPosition(filteredPointset, true);
+        }
+        return filteredPointset;
+    }
+    function _sortByX(pointset) {
+        return pointset.sort((a, b) => {
+            if (a[0] === b[0]) {
+                return a[1] - b[1];
+            }
+            return a[0] - b[0];
+        });
+    }
+    function _sqLength(a, b) {
+        return (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2;
+    }
+    function _cos(o, a, b) {
+        const aShifted = [a[0] - o[0], a[1] - o[1]];
+        const bShifted = [b[0] - o[0], b[1] - o[1]];
+        const sqALen = _sqLength(o, a);
+        const sqBLen = _sqLength(o, b);
+        const dot = aShifted[0] * bShifted[0] + aShifted[1] * bShifted[1];
+        return dot / Math.sqrt(sqALen * sqBLen);
+    }
+    function _intersect(segment, pointset) {
+        for (let i = 0; i < pointset.length - 1; i++) {
+            const seg = [pointset[i], pointset[i + 1]];
+            if ((segment[0][0] === seg[0][0] && segment[0][1] === seg[0][1]) ||
+                (segment[0][0] === seg[1][0] && segment[0][1] === seg[1][1])) {
+                continue;
+            }
+            if (intersect(segment, seg)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    function _occupiedArea(pointset) {
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        for (let i = pointset.length - 1; i >= 0; i--) {
+            if (pointset[i][0] < minX) {
+                minX = pointset[i][0];
+            }
+            if (pointset[i][1] < minY) {
+                minY = pointset[i][1];
+            }
+            if (pointset[i][0] > maxX) {
+                maxX = pointset[i][0];
+            }
+            if (pointset[i][1] > maxY) {
+                maxY = pointset[i][1];
+            }
+        }
+        return [
+            maxX - minX, // width
+            maxY - minY, // height
+        ];
+    }
+    function _bBoxAround(edge) {
+        return [
+            Math.min(edge[0][0], edge[1][0]), // left
+            Math.min(edge[0][1], edge[1][1]), // top
+            Math.max(edge[0][0], edge[1][0]), // right
+            Math.max(edge[0][1], edge[1][1]), // bottom
+        ];
+    }
+    // let MAX_CONCAVE_ANGLE_COS; // angle = 90 deg
+    // let MAX_SEARCH_BBOX_SIZE_PERCENT;
+    function _midPoint(edge, innerPoints, convex1) {
+        let point = null;
+        let angle1Cos = MAX_CONCAVE_ANGLE_COS;
+        let angle2Cos = MAX_CONCAVE_ANGLE_COS;
+        let a1Cos;
+        let a2Cos;
+        for (let i = 0; i < innerPoints.length; i++) {
+            a1Cos = _cos(edge[0], edge[1], innerPoints[i]);
+            a2Cos = _cos(edge[1], edge[0], innerPoints[i]);
+            if (a1Cos > angle1Cos &&
+                a2Cos > angle2Cos &&
+                !_intersect([edge[0], innerPoints[i]], convex1) &&
+                !_intersect([edge[1], innerPoints[i]], convex1)) {
+                angle1Cos = a1Cos;
+                angle2Cos = a2Cos;
+                point = innerPoints[i];
+            }
+        }
+        return point;
+    }
+    function _concave(convex1, maxSqEdgeLen, maxSearchArea, grid1, edgeSkipList) {
+        let edge;
+        let keyInSkipList;
+        let scaleFactor;
+        let midPoint;
+        let bBoxAround;
+        let bBoxWidth;
+        let bBoxHeight;
+        let midPointInserted = false;
+        for (let i = 0; i < convex1.length - 1; i++) {
+            edge = [convex1[i], convex1[i + 1]];
+            keyInSkipList = `${edge[0].join()},${edge[1].join()}`;
+            if (_sqLength(edge[0], edge[1]) < maxSqEdgeLen || edgeSkipList[keyInSkipList] === true) {
+                continue;
+            }
+            scaleFactor = 0;
+            bBoxAround = _bBoxAround(edge);
+            do {
+                bBoxAround = grid1.extendBbox(bBoxAround, scaleFactor);
+                bBoxWidth = bBoxAround[2] - bBoxAround[0];
+                bBoxHeight = bBoxAround[3] - bBoxAround[1];
+                midPoint = _midPoint(edge, grid1.rangePoints(bBoxAround), convex1);
+                scaleFactor++;
+            } while (midPoint === null && (maxSearchArea[0] > bBoxWidth || maxSearchArea[1] > bBoxHeight));
+            if (bBoxWidth >= maxSearchArea[0] && bBoxHeight >= maxSearchArea[1]) {
+                edgeSkipList[keyInSkipList] = true;
+            }
+            if (midPoint !== null) {
+                convex1.splice(i + 1, 0, midPoint);
+                grid1.removePoint(midPoint);
+                midPointInserted = true;
+            }
+        }
+        if (midPointInserted) {
+            return _concave(convex1, maxSqEdgeLen, maxSearchArea, grid1, edgeSkipList);
+        }
+        return convex1;
+    }
+    function hull(pointset, concavity, format = false) {
+        const maxEdgeLen = concavity || 20;
+        if (pointset.length < 4) {
+            return pointset.slice();
+        }
+        const points = _filterDuplicates(_sortByX(formatUtil.toPosition(pointset, format)));
+        const occupiedArea = _occupiedArea(points);
+        const maxSearchArea = [
+            occupiedArea[0] * MAX_SEARCH_BBOX_SIZE_PERCENT,
+            occupiedArea[1] * MAX_SEARCH_BBOX_SIZE_PERCENT,
+        ];
+        const convex1 = convex(points);
+        const innerPoints = points.filter((pt) => convex1.indexOf(pt) < 0);
+        const cellSize = Math.ceil(1 / (points.length / (occupiedArea[0] * occupiedArea[1])));
+        const concave = _concave(convex1, maxEdgeLen ** 2, maxSearchArea, grid(innerPoints, cellSize), {});
+        return formatUtil.toMagicPoint(concave, format);
+    }
 }
+initializeMagicWand();
