@@ -951,7 +951,7 @@ NEW:<br>
                     if (is_reload_tiles) {
                         waitForLoad();
                     } else {
-                        if(LOGGING_LEVEL >= DEBUG_LEVEL.DEBUG)
+                        if(LOGGING_LEVEL >= DEBUG_LEVEL.DEBUG) {
                             if(!storedClickCanvasX || !storedClickCanvasY || !storedViewOffsetX || !storedViewOffsetY) {
                                 storedClickCanvasX = clickCanvasX;
                                 storedClickCanvasY = clickCanvasY;
