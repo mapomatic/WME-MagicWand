@@ -1448,10 +1448,10 @@ NEW:<br>
 
         // grid.js
         class Grid {
-            private _cellSize: any;
+            private _cellSize: number;
             private _cells: never[];
 
-            constructor(points, cellSize) {
+            constructor(points: GeoJSON.Position[], cellSize: number) {
                 this._cells = [];
                 this._cellSize = cellSize;
 
@@ -1520,7 +1520,8 @@ NEW:<br>
             }
         }
 
-        function grid(points, cellSize) : Grid{
+        function grid(points: GeoJSON.Position[], cellSize: number) : Grid
+        {
             return new Grid(points, cellSize);
         }
 
@@ -1546,7 +1547,7 @@ NEW:<br>
             return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
         }
 
-        function _upperTangent(pointset) {
+        function _upperTangent(pointset: GeoJSON.Position[]) : GeoJSON.Position[] {
             const lower = [];
             for (let l = 0; l < pointset.length; l++) {
                 while (
@@ -1561,7 +1562,7 @@ NEW:<br>
             return lower;
         }
 
-        function _lowerTangent(pointset) {
+        function _lowerTangent(pointset: GeoJSON.Position[]) : GeoJSON.Position[] {
             const reversed = pointset.reverse();
             const upper = [];
             for (let u = 0; u < reversed.length; u++) {
