@@ -5,7 +5,7 @@
 // @namespace           http://en.advisor.travel/wme-magic-wand
 // @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it
 // @include             https://beta.waze.com/*
-// @version             2025.07.24.001
+// @version             2025.07.25.001
 // @require             https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js
 // @require             https://cdn.jsdelivr.net/npm/proj4@2.16.2/dist/proj4.min.js
 // @require             https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
@@ -110,22 +110,32 @@ NEW:<br>
             console.error("WME Magic Wand:", ex);
         }
     }
-    function toggleMagicWandProcessing(id) {
+    function toggleMagicWandProcessing(id, zoomTrigger = false) {
         let status;
         let bgColor;
         let btnText;
         if (MWSettings._enabled) {
-            if (!magicwand_processing_allowed) {
-                bgColor = "red";
-                btnText = "STOP MAGIC WAND";
-                status = "Waiting for click";
+            if (sdk.Map.getZoomLevel() < MIN_ZOOM_LEVEL) {
+                bgColor = "black";
+                btnText = "ZOOM DISABLED";
+                status = "Disabled";
+                magicwand_processing_allowed = false;
+                $(id).prop("disabled", true);
             }
             else {
-                bgColor = "green";
-                btnText = "START MAGIC WAND";
-                status = "Disabled";
+                if (!zoomTrigger && !magicwand_processing_allowed) {
+                    bgColor = "red";
+                    btnText = "STOP MAGIC WAND";
+                    status = "Waiting for click";
+                }
+                else {
+                    bgColor = "green";
+                    btnText = "START MAGIC WAND";
+                    status = "Disabled";
+                }
+                if (!zoomTrigger)
+                    magicwand_processing_allowed = !magicwand_processing_allowed;
             }
-            magicwand_processing_allowed = !magicwand_processing_allowed;
             $(id).css("background-color", bgColor);
             $(id).text(btnText);
             updateStatus(status);
@@ -251,6 +261,7 @@ NEW:<br>
                     MWSettings._enabled = e.target.checked;
                 });
                 document.getElementById("mw-ScriptEnabled").checked = MWSettings._enabled;
+                toggleMagicWandProcessing("#_bMagicWandProcessClick", true);
             });
             // UI listeners
             $(".mw-common-process-click").on("click", (e) => {
@@ -670,6 +681,13 @@ NEW:<br>
             eventName: "wme-map-zoom-changed",
             eventHandler: () => {
                 is_reload_tiles = true;
+                toggleMagicWandProcessing("#_bMagicWandProcessClick", true);
+                if (sdk.Map.getZoomLevel() < MIN_ZOOM_LEVEL) {
+                    resetProcessState();
+                }
+                else {
+                    $("#_bMagicWandProcessClick").prop("disabled", false);
+                }
             },
         });
         // W.map.events.register("changebaselayer", null, () => {
