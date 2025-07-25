@@ -5,7 +5,7 @@
 // @namespace           http://en.advisor.travel/wme-magic-wand
 // @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it
 // @include             https://beta.waze.com/*
-// @version             2025.07.23.001
+// @version             2025.07.24.001
 // @require             https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js
 // @require             https://cdn.jsdelivr.net/npm/proj4@2.16.2/dist/proj4.min.js
 // @require             https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
@@ -64,6 +64,7 @@ function magicwand() {
     })(DEBUG_LEVEL || (DEBUG_LEVEL = {}));
     ;
     const LOGGING_LEVEL = DEBUG_LEVEL.INFO; // Set the logging level for the script
+    const MIN_ZOOM_LEVEL = 17;
     let storedClickCanvasX;
     let storedClickCanvasY;
     let storedViewOffsetX;
@@ -163,72 +164,74 @@ NEW:<br>
                     </div>
                 </div>
             </div>
-            <div class='mw-script-controls' style='border-bottom:2px double grey;padding-top:8px'>
-                <div class='mw-script-controls mw-script-controls-wrapper'>
-                    <div class='magicwand_common magicwand_common_button' style='display:block;'>
-                        <label class="magicwand_common magicwand_common_button_label" for='_bMagicWandProcessClick' style='font-weight:bold'><span class='magicwand_common magicwand_common_button_label'>Magic Wand Control:</span></label>
-                        <button type="button" class="mw-common-process-click" id="_bMagicWandProcessClick" name="_bMagicWandProcessClick" style="color:white; background-color: green">START MAGIC WAND</button>
-                    </div>
-                    <div class='magicwand_common magicwand_common_status' style='display:block;'>
-                        <label class="magicwand_common_status magicwand_common_status_label" for='_sMagicWandStatus' style='font-weight:bold'>Status: </label>
-                        <span id="_sMagicWandStatus">Disabled</span>
-                    </div>
-                    <div class='magicwand_common magicwand_common_layer' style='display:block;'>
-                        <label class="magicwand_common_layer magicwand_common_layer_label" for='_sMagicWandUsedLayer' style='font-weight:bold'>Layer:</label>
-                        <span id="_sMagicWandUsedLayer"></span>
-                    </div>
-                    <div class='magicwand_common magicwand_color_to_match' style='display:block;'>
-                        <label class="magicwand_common_color_to_match magicwand_common_color_to_match_label" for='_dMagicWandColorpicker' style='font-weight:bold'>Clicked pixel color to match:</label>
-                        <div id="_dMagicWandColorpicker" style="width: 20px; height: 20px; border: 1px solid black;margin-left: 10px;"></div>
-                    </div>
-                </div>
-            </div>
-            <div class='mw-options' style='display:block;border-bottom:2px double grey;padding-top:8px'>
-                <div class='mw-options mw-options-landmark'>
-                    <label class='mw-options mw-options-landmark mw-options-landmark-label' id='mw-options-landmark-label' for='_sMagicWandLandmark'><span>Landmark type:</span></label>
-                    <select id="_sMagicWandLandmark" name="_sMagicWandLandmark" class="mw-Settings" style="width: 95%"></select>
-                </div>
-                <div class='mw-options mw-options-color-algorithm' id='magicwand_advanced' style='display:grid'>
-                    <label class='mw-options mw-options-color-algorithm mw-options-color-algorithm-label' for='_rMagicWandColorAlgorithm_color' style='font-weight:bold'><span>Color match algorithm:</span></label>
-                    <div class='mw-options mw-options-color-algorithm mw-options-color-algorithm-distance' style='display:block'>
-                        <input type="radio" class="mw-Settings" id="_rMagicWandColorAlgorithm_color" name="_rMagicWandColorAlgorithm" value="1" checked="checked" />
-                        <label class='mw-options mw-options-color-algorithm mw-options-color-algorithm-distance' for='_rMagicWandColorAlgorithm_color'><span>Color Distance<span></label>
-                    </div>
-                    <div class='mw-options mw-options-color-algorithm mw-options-color-algorithm-lab' style='display:block'>
-                        <input type="radio" class="mw-Settings" id="_rMagicWandColorAlgorithm_lab" name="_rMagicWandColorAlgorithm" value="2" />
-                        <label class='mw-options mw-options-color-algorithm mw-options-color-algorithm-distance' for='_rMagicWandColorAlgorithm_lab'><span>Human-eye Similarity</span></label>
+            <div class='mw-controls'>
+                <div class='mw-script-controls' style='border-bottom:2px double grey;padding-top:8px'>
+                    <div class='mw-script-controls mw-script-controls-wrapper'>
+                        <div class='magicwand_common magicwand_common_button' style='display:block;'>
+                            <label class="magicwand_common magicwand_common_button_label" for='_bMagicWandProcessClick' style='font-weight:bold'><span class='magicwand_common magicwand_common_button_label'>Magic Wand Control:</span></label>
+                            <button type="button" class="mw-common-process-click" id="_bMagicWandProcessClick" name="_bMagicWandProcessClick" style="color:white; background-color: green">START MAGIC WAND</button>
+                        </div>
+                        <div class='magicwand_common magicwand_common_status' style='display:block;'>
+                            <label class="magicwand_common_status magicwand_common_status_label" for='_sMagicWandStatus' style='font-weight:bold'>Status: </label>
+                            <span id="_sMagicWandStatus">Disabled</span>
+                        </div>
+                        <div class='magicwand_common magicwand_common_layer' style='display:block;'>
+                            <label class="magicwand_common_layer magicwand_common_layer_label" for='_sMagicWandUsedLayer' style='font-weight:bold'>Layer:</label>
+                            <span id="_sMagicWandUsedLayer"></span>
+                        </div>
+                        <div class='magicwand_common magicwand_color_to_match' style='display:block;'>
+                            <label class="magicwand_common_color_to_match magicwand_common_color_to_match_label" for='_dMagicWandColorpicker' style='font-weight:bold'>Clicked pixel color to match:</label>
+                            <div id="_dMagicWandColorpicker" style="width: 20px; height: 20px; border: 1px solid black;margin-left: 10px;"></div>
+                        </div>
                     </div>
                 </div>
-                <div class='mw-options mw-options-color-tolerance'>
-                    <table>
-                        <tr>
-                            <td style="padding-left:4px"><label for="_cMagicWandSimilarity">Tolerance:</label></td>
-                            <td style="padding-left:4px"><input type="number" id="_cMagicWandSimilarity" name="_cMagicWandSimilarity" value="8" min="4" max="100" step="1" /></td>
-                            <td style="padding-left:4px"><span style="text-wrap:balanced">Around 4-10, >20 very slow</span></td>
-                        </tr>
-                    </table>
-                </div>
-                <div class='mw-options mw-options-color-sampling' style='display:block'>
-                    <table>
-                        <tr>
-                            <td style="padding-left:4px"><label class='mw-options mw-options-color-sampling' for="_cMagicWandSampling">Sampling mask size</label></td>
-                            <td style="padding-left:4px"><input type="number" id="_cMagicWandSampling" name="_cMagicWandSampling" value="3" min="1" max="9" step="1" /></td>
-                            <td style="padding-left:4px"><span style="text-wrap:balanced">Usually 1-3, larger - smoother and more greedy</span></td>
-                        </tr>
-                    </table>
-                </div>
-            </div>
-            <div class='mw-landmark-options' style='display:block;border-bottom:2px double grey;padding-top:8px'>
-                <div class='mw-landmark-options mw-landmark-options-wrapper'>
-                    <div class='mw-landmark-options mw-landmark-options-plr-container'>
-                        <input type=checkbox class='mw-landmark-options mw-checkbox' id='mw-ignorePLR' />
-                        <label class='mw-label' for='mw-ignorePLR'><span class='mw-ignorePLR'>Ignore PLR for Address</span></label>
+                <div class='mw-options' style='display:block;border-bottom:2px double grey;padding-top:8px'>
+                    <div class='mw-options mw-options-landmark'>
+                        <label class='mw-options mw-options-landmark mw-options-landmark-label' id='mw-options-landmark-label' for='_sMagicWandLandmark'><span>Landmark type:</span></label>
+                        <select id="_sMagicWandLandmark" name="_sMagicWandLandmark" class="mw-Settings" style="width: 95%"></select>
                     </div>
-                    <div class='mw-landmark-options mw-landmark-options-pr-container'>
-                        <input type=checkbox class='mw-landmark-options mw-checkbox' id='mw-ignoreunnamePR' />
-                        <label class='mw-label' for='mw-ignoreunnamePR'><span class='mw-ignoreunnamePR'>Ignore Unnamed PR for Address</span></label>
+                    <div class='mw-options mw-options-color-algorithm' id='magicwand_advanced' style='display:grid'>
+                        <label class='mw-options mw-options-color-algorithm mw-options-color-algorithm-label' for='_rMagicWandColorAlgorithm_color' style='font-weight:bold'><span>Color match algorithm:</span></label>
+                        <div class='mw-options mw-options-color-algorithm mw-options-color-algorithm-distance' style='display:block'>
+                            <input type="radio" class="mw-Settings" id="_rMagicWandColorAlgorithm_color" name="_rMagicWandColorAlgorithm" value="1" checked="checked" />
+                            <label class='mw-options mw-options-color-algorithm mw-options-color-algorithm-distance' for='_rMagicWandColorAlgorithm_color'><span>Color Distance<span></label>
+                        </div>
+                        <div class='mw-options mw-options-color-algorithm mw-options-color-algorithm-lab' style='display:block'>
+                            <input type="radio" class="mw-Settings" id="_rMagicWandColorAlgorithm_lab" name="_rMagicWandColorAlgorithm" value="2" />
+                            <label class='mw-options mw-options-color-algorithm mw-options-color-algorithm-distance' for='_rMagicWandColorAlgorithm_lab'><span>Human-eye Similarity</span></label>
+                        </div>
                     </div>
+                    <div class='mw-options mw-options-color-tolerance'>
+                        <table>
+                            <tr>
+                                <td style="padding-left:4px"><label for="_cMagicWandSimilarity">Tolerance:</label></td>
+                                <td style="padding-left:4px"><input type="number" id="_cMagicWandSimilarity" name="_cMagicWandSimilarity" value="8" min="4" max="100" step="1" /></td>
+                                <td style="padding-left:4px"><span style="text-wrap:balanced">Around 4-10, >20 very slow</span></td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class='mw-options mw-options-color-sampling' style='display:block'>
+                        <table>
+                            <tr>
+                                <td style="padding-left:4px"><label class='mw-options mw-options-color-sampling' for="_cMagicWandSampling">Sampling mask size</label></td>
+                                <td style="padding-left:4px"><input type="number" id="_cMagicWandSampling" name="_cMagicWandSampling" value="3" min="1" max="9" step="1" /></td>
+                                <td style="padding-left:4px"><span style="text-wrap:balanced">Usually 1-3, larger - smoother and more greedy</span></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                <div class='mw-landmark-options' style='display:block;border-bottom:2px double grey;padding-top:8px'>
+                    <div class='mw-landmark-options mw-landmark-options-wrapper'>
+                        <div class='mw-landmark-options mw-landmark-options-plr-container'>
+                            <input type=checkbox class='mw-landmark-options mw-checkbox' id='mw-ignorePLR' />
+                            <label class='mw-label' for='mw-ignorePLR'><span class='mw-ignorePLR'>Ignore PLR for Address</span></label>
+                        </div>
+                        <div class='mw-landmark-options mw-landmark-options-pr-container'>
+                            <input type=checkbox class='mw-landmark-options mw-checkbox' id='mw-ignoreunnamePR' />
+                            <label class='mw-label' for='mw-ignoreunnamePR'><span class='mw-ignoreunnamePR'>Ignore Unnamed PR for Address</span></label>
+                        </div>
 
+                    </div>
                 </div>
             </div>
         `,
@@ -770,7 +773,6 @@ NEW:<br>
                             // Have to recreate image - image should have crossOrigin attribute set to "anonymous"
                             img = document.createElement("img");
                             $(img).data("tilei", tilei).data("tilerow", tilerow).attr("crossOrigin", "anonymous");
-                            // eslint-disable-next-line no-loop-func
                             img.onload = function onload() {
                                 const tilei1 = $(this).data("tilei");
                                 const tilerow1 = $(this).data("tilerow");
@@ -916,7 +918,7 @@ NEW:<br>
                 y = current_pixel[1];
                 c_pixel = getPixelAverageSample(canvas_data, x, y);
                 if ((color_algorithm === "sensitivity" && !colorDistance(c_pixel, ref_pixel)) ||
-                    (color_algorithm === "LAB" && calcColorDistance(c_pixel, ref_pixel) > color_distance)) {
+                    (color_algorithm === "LAB" && calcColorDistance(c_pixel, ref_pixel) < color_distance)) {
                     // Outer pixel found
                     polyPixels.push([x + viewOffsetX, y + viewOffsetY]);
                     // Inner point, add neighboring points to the stack
@@ -1401,7 +1403,7 @@ NEW:<br>
             let edge;
             let keyInSkipList;
             let scaleFactor;
-            let midPoint;
+            let midPoint = null;
             let bBoxAround;
             let bBoxWidth;
             let bBoxHeight;
