@@ -96,6 +96,7 @@ function magicwand() {
     let lastSaveTime = 0;
     let magic_wand_process = false;
     let magicwand_processing_allowed = false;
+    let landmark_dialog = null;
     const MW_VERSION = `${GM_info.script.version}`;
     const GF_LINK = "https://greasyfork.org/en/scripts/398965-wme-magicwand";
     const DOWNLOAD_URL = "https://greasyfork.org/en/scripts/398965-wme-magicwand";
@@ -219,10 +220,6 @@ NEW:<br>
                     </div>
                 </div>
                 <div class='mw-options' style='display:block;border-bottom:2px double grey;padding-top:8px'>
-                    <div class='mw-options mw-options-landmark'>
-                        <label class='mw-options mw-options-landmark mw-options-landmark-label' id='mw-options-landmark-label' for='_sMagicWandLandmark'><span>Landmark type:</span></label>
-                        <select id="_sMagicWandLandmark" name="_sMagicWandLandmark" class="mw-Settings" style="width: 95%"></select>
-                    </div>
                     <div class='mw-options mw-options-color-algorithm' id='magicwand_advanced' style='display:grid'>
                         <label class='mw-options mw-options-color-algorithm mw-options-color-algorithm-label' for='_rMagicWandColorAlgorithm_color' style='font-weight:bold'><span>Color match algorithm:</span></label>
                         <div class='mw-options mw-options-color-algorithm mw-options-color-algorithm-distance' style='display:block'>
@@ -279,7 +276,7 @@ NEW:<br>
             r.tabLabel.innerHTML = "MagicWand";
             r.tabPane.innerHTML = addon;
             loadWMEMagicWandSettings().then(() => {
-                populateLandmarks();
+                landmark_dialog = populateLandmarks();
                 $("#mw-ScriptEnabled").on("click", (e) => {
                     MWSettings._enabled = e.target.checked;
                 });
@@ -652,21 +649,48 @@ NEW:<br>
         $("#magicwand_common").hide().show();
     }
     function populateLandmarks() {
-        const landmarkTypes = getElId("_sMagicWandLandmark");
-        if (!landmarkTypes)
-            return;
-        let venueCategories = sdk.DataModel.Venues.getAllVenueCategories();
-        // Sorting by name
-        venueCategories = venueCategories.sort((a, b) => a.localizedName.localeCompare(b.localizedName));
-        for (const venCat of venueCategories) {
-            const id = venCat.id;
-            const category = venCat.localizedName;
-            const usrOption = document.createElement("option");
-            const usrText = document.createTextNode(category);
-            usrOption.value = id;
-            usrOption.appendChild(usrText);
-            landmarkTypes.appendChild(usrOption);
+        // Shamelessly copied from WME PIE - Karlsosha
+        const $places = $("<div>", { style: "padding:8px 16px" });
+        function _getCategorySubCategoryOptions() {
+            const venueAllCategories = sdk.DataModel.Venues.getAllVenueCategories();
+            const mainCategories = new Map();
+            const nameSet = new Set();
+            const res = [];
+            const venueCategories = sdk.DataModel.Venues.getVenueMainCategories();
+            for (const vc of venueCategories) {
+                mainCategories.set(vc.id, { localizedName: vc.localizedName, processed: false });
+                nameSet.add(vc.localizedName);
+            }
+            const venueSubCategories = sdk.DataModel.Venues.getVenueSubCategories();
+            for (const vsc of venueSubCategories) {
+                const mc = mainCategories.get(vsc.categoryId);
+                nameSet.add(vsc.localizedName);
+                if (mc !== null) {
+                    if (!mc.processed) {
+                        res.push(`<option value="${vsc.categoryId}" data-icon="${vsc.categoryId.toLowerCase().replaceAll("_", "-")}" style="font-weight:bold;">${mc.localizedName}</option>`);
+                        mc.processed = true;
+                    }
+                    res.push(`<option value="${vsc.subCategoryId}" data-icon="${vsc.categoryId.toLowerCase().replaceAll("_", "-")}"">${vsc.localizedName}</option>`);
+                }
+            }
+            for (const vac of venueAllCategories) {
+                if (nameSet.has(vac.localizedName))
+                    continue; // already processed
+                nameSet.add(vac.localizedName);
+                res.push(`<option value="${vac.id}" data-icon="${vac.id.toLowerCase().replaceAll("_", "-")}"">${vac.localizedName}</option>`);
+            }
+            return res;
         }
+        const categories = _getCategorySubCategoryOptions();
+        const htmlItems = [
+            `<div id="mwLandmarkSelection" style="padding:8px 16px; position:fixed; border-radius:10px; box-shadow:5px 5px 10px silver; top:25%; left:30%; background-color:white; min-width:100px; min-height:100px;">`,
+            `<label class='mw-options mw-options-landmark mw-options-landmark-label' id='mw-options-landmark-label' for='_sMagicWandLandmark'><span>Landmark type:</span></label>`,
+            `<select id="_sMagicWandLandmark" name="_sMagicWandLandmark" class="mw-Settings" style="width: 95%">`
+        ];
+        htmlItems.push(...categories);
+        htmlItems.push("</select>", '<button id="mwLandmarkSelectedButton">Apply</button>', '<button id="mwLandmarkCancelButton">Cancel</button>', "</div>");
+        $places.html(htmlItems.join(" "));
+        return $places;
     }
     function WMELandmarkMagicWand() {
         const MAX_CONCAVE_ANGLE_COS = Math.cos(90 / (180 / Math.PI)); // angle = 90 deg
@@ -684,7 +708,6 @@ NEW:<br>
         let color_sensitivity;
         let color_distance;
         let color_algorithm;
-        let landmark_type;
         let sampling = 3;
         let waited_for = 0;
         let is_reload_tiles = false;
@@ -746,7 +769,6 @@ NEW:<br>
                     color_algorithm = getElId("_rMagicWandColorAlgorithm_lab").checked
                         ? "LAB"
                         : "sensitivity";
-                    landmark_type = getElId("_sMagicWandLandmark").options[getElId("_sMagicWandLandmark").selectedIndex].value;
                     sampling = Number.parseInt(getElId("_cMagicWandSampling").value, 10);
                     const LatLon = sdk.Map.getLonLatFromPixel(pixel);
                     const olProj = proj4("EPSG:4326", "EPSG:3857", [LatLon.lon, LatLon.lat]);
@@ -1086,9 +1108,20 @@ NEW:<br>
             }
             const centeroid = turf.centroid(polygon);
             const segment = findClosestSegment(centeroid.geometry);
-            const v = sdk.DataModel.Venues.addVenue({ category: landmark_type, geometry: polygon.geometry });
-            if (segment?.primaryStreetId) {
-                sdk.DataModel.Venues.updateAddress({ streetId: segment.primaryStreetId, venueId: v.toString() });
+            if (landmark_dialog !== null) {
+                $("#WazeMap").append(landmark_dialog.html());
+                let landmark_type = "AIRPORT";
+                $("#mwLandmarkSelectedButton").on("click", () => {
+                    landmark_type = $("#_sMagicWandLandmark").find(":selected").val();
+                    const v = sdk.DataModel.Venues.addVenue({ category: landmark_type, geometry: polygon.geometry });
+                    if (segment?.primaryStreetId) {
+                        sdk.DataModel.Venues.updateAddress({ streetId: segment.primaryStreetId, venueId: v.toString() });
+                    }
+                    $("#mwLandmarkSelection").remove();
+                });
+                $("#mwLandmarkCancelButton").on("click", () => {
+                    $("#mwLandmarkSelection").remove();
+                });
             }
             // const WazefeatureVectorLandmark = require("Waze/Feature/Vector/Landmark");
             // const WazeActionAddLandmark = require("Waze/Action/AddLandmark");
