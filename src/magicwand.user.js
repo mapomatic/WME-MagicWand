@@ -5,7 +5,7 @@
 // @namespace           http://en.advisor.travel/wme-magic-wand
 // @description         The very same thing as same tool in graphic editor: select "similar" colored area and create landmark out of it
 // @include             https://beta.waze.com/*
-// @version             2025.08.09.001
+// @version             2025.08.09.002
 // @require             https://cdn.jsdelivr.net/npm/@turf/turf@7.2.0/turf.min.js
 // @require             https://cdn.jsdelivr.net/npm/proj4@2.16.2/dist/proj4.min.js
 // @require             https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
@@ -99,7 +99,7 @@ function magicwand() {
     let landmark_dialog = null;
     const MW_VERSION = `${GM_info.script.version}`;
     const GF_LINK = "https://greasyfork.org/en/scripts/398965-wme-magicwand";
-    const DOWNLOAD_URL = "https://greasyfork.org/en/scripts/398965-wme-magicwand";
+    const DOWNLOAD_URL = "https://greasyfork.org/en/scripts/545225-wme-magicwand-mapomatic-fork";
     const FORUM_LINK = "https://www.waze.com/discuss/t/script-wme-magicwand/73830";
     const MW_UPDATE_NOTES = `
 <H1>BETA VERSION</H1>
